@@ -39,12 +39,12 @@ export default function HomePage() {
               </a>
             </div>
             <div className="flex items-center gap-3">
-              <Link href="/login">
+              <Link href="/auth/login">
                 <Button variant="ghost" size="sm">
                   Log in
                 </Button>
               </Link>
-              <Link href="/signup">
+              <Link href="/auth/signup">
                 <Button size="sm" className="bg-primary hover:bg-primary/90">
                   Get Started
                   <ArrowRight className="ml-2 h-4 w-4" />
