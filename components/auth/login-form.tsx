@@ -133,6 +133,7 @@ export function LoginForm() {
                     id="email"
                     placeholder="name@example.com"
                     type="email"
+                    name="email"
                     autoCapitalize="none"
                     autoComplete="email"
                     autoCorrect="off"
@@ -151,7 +152,7 @@ export function LoginForm() {
                 </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input id="password" type="password" disabled={isLoading} className="pl-10" required />
+                  <Input id="password" name="password" type="password" disabled={isLoading} className="pl-10" required />
                 </div>
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
