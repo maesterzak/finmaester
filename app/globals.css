@@ -1,0 +1,204 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Professional Financial Dark Theme */
+    --background: 15 20% 8%;
+    --foreground: 0 0% 96%;
+    --card: 20 15% 12%;
+    --card-foreground: 0 0% 96%;
+    --popover: 15 20% 8%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 156 100% 40%;
+    --primary-foreground: 15 20% 8%;
+    --secondary: 200 70% 50%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 20 8% 25%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 156 100% 40%;
+    --accent-foreground: 15 20% 8%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 20 8% 20%;
+    --input: 20 8% 18%;
+    --ring: 156 100% 40%;
+    --radius: 0.75rem;
+    --sidebar-background: 15 20% 6%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-border: 20 8% 18%;
+    --sidebar-accent: 156 100% 40%;
+    --sidebar-accent-foreground: 15 20% 8%;
+    --sidebar-ring: 156 100% 40%;
+  }
+
+  .dark {
+    --background: 15 20% 8%;
+    --foreground: 0 0% 96%;
+    --card: 20 15% 12%;
+    --card-foreground: 0 0% 96%;
+    --popover: 15 20% 8%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 156 100% 40%;
+    --primary-foreground: 15 20% 8%;
+    --secondary: 200 70% 50%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 20 8% 25%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 156 100% 40%;
+    --accent-foreground: 15 20% 8%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 20 8% 20%;
+    --input: 20 8% 18%;
+    --ring: 156 100% 40%;
+    --sidebar-background: 15 20% 6%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-border: 20 8% 18%;
+    --sidebar-accent: 156 100% 40%;
+    --sidebar-accent-foreground: 15 20% 8%;
+    --sidebar-ring: 156 100% 40%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Add smooth animations and transitions */
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  span,
+  a,
+  button,
+  input,
+  label {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Add smooth transitions and animations */
+@layer utilities {
+  .responsive-container {
+    @apply w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Smooth animations */
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+
+  @keyframes slideIn {
+    from {
+      transform: translateY(10px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes scaleIn {
+    from {
+      transform: scale(0.95);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* Smooth hover effects */
+  .transition-smooth {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  /* Card elevation */
+  .card-hover {
+    @apply hover:shadow-lg hover:shadow-primary/20 transition-smooth;
+  }
+}
+
+/* React Toastify Custom Styles */
+.Toastify__toast-container {
+  z-index: 9999;
+}
+
+.Toastify__toast {
+  border-radius: 0.75rem;
+  font-family: inherit;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.Toastify__toast--success {
+  background: hsl(156 100% 40%);
+  color: hsl(15 20% 8%);
+}
+
+.Toastify__toast--error {
+  background: hsl(0 84% 60%);
+  color: hsl(0 0% 98%);
+}
+
+.Toastify__toast--info {
+  background: hsl(200 70% 50%);
+  color: hsl(0 0% 98%);
+}
+
+.Toastify__toast--warning {
+  background: hsl(45 93% 47%);
+  color: hsl(15 20% 8%);
+}
+
+.dark .Toastify__toast--success {
+  background: hsl(156 100% 40%);
+  color: hsl(15 20% 8%);
+}
+
+.dark .Toastify__toast--error {
+  background: hsl(0 84% 60%);
+  color: hsl(0 0% 98%);
+}
+
+.dark .Toastify__toast--info {
+  background: hsl(200 70% 50%);
+  color: hsl(0 0% 98%);
+}
+
+.dark .Toastify__toast--warning {
+  background: hsl(45 93% 47%);
+  color: hsl(15 20% 8%);
+}
