@@ -81,7 +81,7 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
       />
 
       {/* Modal */}
-      <div className="fixed  z-50 top-10 w-[80vw] md:w-[50vw] bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6  max-h-[90vh] overflow-y-auto">
+      <div className="fixed  z-50 top-10 w-[80vw] md:w-[50vw]  bg-accent/20 rounded-lg shadow-lg p-6  max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold mb-2">{transaction ? "Edit Transaction" : "Add New Transaction"}</h2>
         <p className="text-sm text-muted-foreground mb-4">
           {transaction ? "Update your transaction details." : "Add a new income or expense transaction."}
