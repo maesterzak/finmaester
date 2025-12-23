@@ -50,7 +50,7 @@ export function Sidebar({ children, className }: { children: React.ReactNode; cl
       {/* Mobile overlay */}
       {isMobile && mobileOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm"
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm w-screen overflow-hidden"
           onClick={() => setMobileOpen(false)}
           aria-hidden="true"
         />

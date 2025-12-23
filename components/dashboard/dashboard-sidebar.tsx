@@ -63,8 +63,8 @@ export function DashboardSidebar() {
   }
 
   return (
-    <Sidebar>
-      <SidebarHeader className="flex items-center justify-between p-4">
+    <Sidebar >
+      <SidebarHeader className="flex items-center justify-between p-4 ">
         <Link href="/dashboard" className="flex items-center gap-2">
           <Logo variant="full" size="md" />
         </Link>

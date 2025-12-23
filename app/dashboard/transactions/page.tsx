@@ -7,7 +7,7 @@ import { useState } from "react"
 export default function TransactionsPage() {
   const [triggerAdd, setTriggerAdd] = useState(0)
   return (
-    <div className="container mx-auto p-4 md:p-6">
+    <div className="container mx-auto p-4 md:p-6 ">
       <DashboardHeader
         title="Transactions"
         description="Manage your income and expenses"

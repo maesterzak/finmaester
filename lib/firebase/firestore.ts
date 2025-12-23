@@ -13,6 +13,7 @@ import {
   Timestamp,
   QueryConstraint,
   writeBatch,
+  setDoc,
 } from "firebase/firestore"
 import { db } from "./config"
 import { tr } from "date-fns/locale"
@@ -55,10 +56,18 @@ export interface Category {
 
 export interface UserSettings {
   id?: string
-  userId: string
-  currency: string
+  userName?: string
+  userEmail?: string
+  userId?: string
+  currency?: string
   monthlyIncome?: number
   monthlyBudget?: number
+  theme?: "light" | "dark" | "system"
+  notifications?: {
+    email: boolean
+    monthlyReports: boolean
+    budgetAlerts: boolean
+  }
   displayName?: string
   createdAt?: Timestamp
   updatedAt?: Timestamp
@@ -404,23 +413,37 @@ export const getUserSettings = async (userId: string) => {
   try {
     const settingsRef = doc(db, "userSettings", userId)
     const settingsSnap = await getDoc(settingsRef)
+
     if (settingsSnap.exists()) {
-      return { data: { id: settingsSnap.id, ...settingsSnap.data() } as UserSettings, error: null }
+      return {
+        data: { id: settingsSnap.id, ...settingsSnap.data() } as UserSettings,
+        error: null
+      }
     } else {
-      // Create default settings if they don't exist
-      const defaultSettings: Omit<UserSettings, "id"> = {
+      const defaultSettings: UserSettings = {
+        id: userId,
         userId,
-        currency: "USD",
+        currency: "NGN",
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
+        theme: "light",
+        notifications: {
+          email: true,
+          monthlyReports: true,
+          budgetAlerts: true
+        }
       }
-      await addDoc(collection(db, "userSettings"), defaultSettings)
-      return { data: defaultSettings as UserSettings, error: null }
+
+      // ✅ Create document with userId as doc ID
+      await setDoc(settingsRef, defaultSettings)
+
+      return { data: defaultSettings, error: null }
     }
   } catch (error: any) {
     return { data: null, error: error.message }
   }
 }
+
 
 export const updateUserSettings = async (userId: string, updates: Partial<UserSettings>) => {
   try {
@@ -446,6 +469,8 @@ export const updateUserSettings = async (userId: string, updates: Partial<UserSe
     return { success: false, error: error.message }
   }
 }
+
+
 
 // Subscriptions
 export const getSubscriptions = async (userId: string) => {

@@ -52,7 +52,7 @@ export function LoginForm() {
       toastSuccess("Welcome back to FinMaester!")
       router.push("/dashboard")
     } else {
-      toastError(result.error || "Invalid email or password")
+      toastError("Invalid email or password")
     }
   }
 

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,14 +13,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { User } from "lucide-react"
+import { useProfiles } from "@/hooks/useProfile"
 
 export function SettingsForm() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
 
   // User profile state
-  const [name, setName] = useState("John Doe")
-  const [email, setEmail] = useState("john@example.com")
+  const [name, setName] = useState('...')
+  const [email, setEmail] = useState('...')
+  const {loadProfile} =  useProfiles();
 
   // Notification settings
   const [emailNotifications, setEmailNotifications] = useState(true)
@@ -29,6 +31,25 @@ export function SettingsForm() {
 
   // Theme settings
   const [darkMode, setDarkMode] = useState(false)
+
+  useEffect(() => {
+    getUserInfo();
+  },[])
+
+  //get user info
+  const getUserInfo = async () => {
+    const profile = await loadProfile();
+    console.log("Profile loaded in settings form:", profile);
+     setName(profile?.userName || '...');
+     setEmail(profile?.userEmail || '...');
+     setDarkMode(profile?.theme === 'dark');
+     setEmailNotifications(profile?.notifications?.email || false);
+     setMonthlyReports(profile?.notifications?.monthlyReports || false);
+     setBudgetAlerts(profile?.notifications?.budgetAlerts || false);
+  }
+   
+
+    
 
   const handleProfileUpdate = (e: React.FormEvent) => {
     e.preventDefault()
@@ -99,7 +120,9 @@ export function SettingsForm() {
                   <div className="space-y-2 flex-1">
                     <div className="space-y-1">
                       <Label htmlFor="name">Full Name</Label>
-                      <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+                      <Input id="name" value={name} 
+                      // onChange={(e) => setName(e.target.value)}
+                       disabled />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="email">Email</Label>
@@ -107,8 +130,8 @@ export function SettingsForm() {
                         id="email"
                         type="email"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
+                        // onChange={(e) => setEmail(e.target.value)}
+                        disabled
                       />
                     </div>
                   </div>

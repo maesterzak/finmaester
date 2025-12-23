@@ -8,6 +8,9 @@
   }
 }
 
+html, body {
+  overflow-x: hidden !important;
+}
 @layer base {
   :root {
     --font-sans: var(--font-geist-sans);

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState,useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,7 @@ import {
   Heart,
   Landmark,
   MoreHorizontal,
+  MoreVertical,
   Pencil,
   Search,
   ShoppingBag,
@@ -70,6 +71,8 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
   const currentDate = new Date()
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth())
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (triggerAdd && triggerAdd > 0) {
@@ -161,6 +164,7 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
 
   if (!loading) {
     return (
+      
       <div className="space-y-6">
       <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
         <CardContent className="p-4">
@@ -261,7 +265,7 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
               <TabsTrigger value="expense">Expenses</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="all" className="mt-0">
+            <TabsContent value="all" className="mt-0 w-full">
               <TransactionTable
                 transactions={filteredTransactions}
                 onEdit={handleEditTransaction}
@@ -269,7 +273,7 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
               />
             </TabsContent>
 
-            <TabsContent value="income" className="mt-0">
+            <TabsContent value="income" className="mt-0 w-full">
               <TransactionTable
                 transactions={filteredTransactions.filter((tx) => tx.type === "income")}
                 onEdit={handleEditTransaction}
@@ -277,7 +281,7 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
               />
             </TabsContent>
 
-            <TabsContent value="expense" className="mt-0">
+            <TabsContent value="expense" className="mt-0 w-full">
               <TransactionTable
                 transactions={filteredTransactions.filter((tx) => tx.type === "expense")}
                 onEdit={handleEditTransaction}
@@ -300,7 +304,7 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 flex" onClick={()=> setOpenMenuId(null)}>
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -384,7 +388,10 @@ interface TransactionTableProps {
   onDelete: (id: string) => void
 }
 
-function TransactionTable({ transactions, onEdit, onDelete }: TransactionTableProps) {
+function TransactionTable({ transactions, onEdit, onDelete,onUpdate }: TransactionTableProps) {
+
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
    if (transactions.length === 0) {
     return (
       <div className="text-center py-10">
@@ -402,74 +409,75 @@ function TransactionTable({ transactions, onEdit, onDelete }: TransactionTablePr
   }
 
   return (
-    <div className="rounded-md border overflow-x-auto">
-      <table className="w-full caption-bottom text-sm">
-        <thead>
-          <tr className="border-b bg-muted/50">
-            <th className="h-12 px-4 text-left font-medium">Date</th>
-            <th className="h-12 px-4 text-left font-medium">Description</th>
-            <th className="h-12 px-4 text-left font-medium">Category</th>
-            <th className="h-12 px-4 text-left font-medium">Amount</th>
-            <th className="h-12 px-4 text-left font-medium w-[70px]"></th>
+    <div className="relative overflow-x-auto rounded-lg border " onClick={()=>setOpenMenuId(null)}>
+      <table className="min-w-full text-sm text-left">
+        <thead className=" text-gray-400 dark:text-gray-400">
+          <tr>
+            <th className="px-4 py-3 font-medium">Date</th>
+            <th className="px-4 py-3 font-medium">Description</th>
+            <th className="px-4 py-3 font-medium">Category</th>
+            <th className="px-4 py-3 font-medium text-right">Amount</th>
+            <th className="px-4 py-3 w-12"></th>
           </tr>
         </thead>
-        <tbody>
-          {transactions.map((transaction) => {
-            const IconComponent = getIcon((transaction as any).icon)
-            return (
-              <tr key={transaction.id} className="border-b">
-                <td className="p-4 align-middle">{new Date(transaction.date).toLocaleDateString()}</td>
-                <td className="p-4 align-middle font-medium">{transaction.description}</td>
-                <td className="p-4 align-middle">
-                  <div className="flex items-center gap-2">
-                    <IconComponent className="h-4 w-4 text-muted-foreground" />
-                    <span>{transaction.categoryName || "Uncategorized"}</span>
-                  </div>
-                </td>
-                <td className="p-4 align-middle">
-                  <div className="flex items-center">
-                    {transaction.type === "income" ? (
-                      <ArrowUpIcon className="mr-1 h-4 w-4 text-green-500" />
-                    ) : (
-                      <ArrowDownIcon className="mr-1 h-4 w-4 text-red-500" />
-                    )}
-                    <span
-                      className={
-                        transaction.type === "income"
-                          ? "text-green-600 dark:text-green-400"
-                          : "text-red-600 dark:text-red-400"
-                      }
+
+        <tbody className="divide-y dark:divide-gray-800">
+          {transactions.map((tx) => (
+            <tr key={tx.id} className=" hover:bg-accent/50 hover:text-accent-foreground">
+              <td className="px-4 py-3">
+                {new Date(tx.date).toLocaleDateString()}
+              </td>
+
+              <td className="px-4 py-3 font-medium">{tx.description}</td>
+
+              <td className="px-4 py-3 ">
+                {tx.categoryName}
+              </td>
+
+              <td className="px-4 py-3 text-right font-semibold">
+                ₦{tx.amount.toFixed(2)}
+              </td>
+
+              {/* ACTION MENU */}
+              <td className="px-4 py-3 relative">
+                <button
+                  onClick={(e) =>[e.stopPropagation(),
+                    setOpenMenuId(openMenuId === tx.id ? null : tx.id)]
+                  }
+                  className="p-1 rounded  hover:bg-accent/50 hover:text-accent-foreground dark:hover:bg-gray-700"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+
+                {openMenuId === tx.id && (
+                  <div
+                    ref={menuRef}
+                    className="absolute right-2 top-10 z-50 w-32 rounded-md border bg-accent text-accent-foreground hover:bg-accent/50 hover:text-accent-foreground shadow-lg"
+                  >
+                    <button
+                      onClick={() => {
+                        onEdit(tx)
+                        setOpenMenuId(null)
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm bg-accent text-accent-foreground rounded-t-md"
                     >
-                      {formatCurrency(transaction.amount)}
-                    </span>
+                      Update
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        onDelete(tx.id)
+                        setOpenMenuId(null)
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-red-600 bg-accent  "
+                    >
+                      Delete
+                    </button>
                   </div>
-                </td>
-                <td className="p-4 align-middle">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Actions</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit(transaction)}>
-                        <Pencil className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => onDelete(transaction.id!)}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td>
-              </tr>
-            )
-          })}
+                )}
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
