@@ -31,9 +31,9 @@ export function useCategories() {
 
     setLoading(true)
     const { data, error } = await getCategories(user.uid)
-
+console.log("Loaded categories:", data, "Error:", error)
     if (error) {
-      toastError("Failed to load categories")
+      toastError('Failed to load categories ')
     } else {
       setCategories(data)
     }

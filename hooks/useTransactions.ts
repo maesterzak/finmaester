@@ -9,12 +9,21 @@ import {
   deleteTransaction,
   type Transaction,
 } from "@/lib/firebase/firestore"
+import { where, limit, QueryConstraint } from "firebase/firestore"
 import { toastSuccess, toastError } from "@/lib/toast"
 
-export function useTransactions() {
+interface UseTransactionsOptions {
+  limitCount?: number
+  startDate?: string
+  endDate?: string
+}
+
+export function useTransactions(options?: UseTransactionsOptions) {
   const { user } = useAuth()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
+
+  const optionKey = JSON.stringify(options)
 
   useEffect(() => {
     if (user) {
@@ -23,13 +32,25 @@ export function useTransactions() {
       setTransactions([])
       setLoading(false)
     }
-  }, [user])
+  }, [user, optionKey])
 
   const loadTransactions = async () => {
     if (!user) return
 
     setLoading(true)
-    const { data, error } = await getTransactions(user.uid)
+    const constraints: QueryConstraint[] = []
+    
+    if (options?.startDate) {
+      constraints.push(where("date", ">=", options.startDate))
+    }
+    if (options?.endDate) {
+      constraints.push(where("date", "<=", options.endDate))
+    }
+    if (options?.limitCount) {
+      constraints.push(limit(options.limitCount))
+    }
+
+    const { data, error } = await getTransactions(user.uid, constraints)
     if (error) {
       toastError("Failed to load transactions")
     } else {
@@ -39,9 +60,7 @@ export function useTransactions() {
   }
 
   const handleAddTransaction = async (transactionData: Omit<Transaction, "id" | "userId" | "createdAt" | "updatedAt">) => {
-    console.log("Adding transaction 2", transactionData)
-    if (!user) return
-    console.log("Adding transaction", transactionData)
+    if (!user) return false
     const { id, error } = await addTransaction({
       ...transactionData,
       userId: user.uid,
@@ -58,8 +77,7 @@ export function useTransactions() {
   }
 
   const handleUpdateTransaction = async (transactionId: string, updates: Partial<Transaction>) => {
-    if (!user) return
-
+    if (!user) return false
     const { success, error } = await updateTransaction(transactionId, updates)
 
     if (error) {
@@ -73,8 +91,7 @@ export function useTransactions() {
   }
 
   const handleDeleteTransaction = async (transactionId: string) => {
-    if (!user) return
-
+    if (!user) return false
     const { success, error } = await deleteTransaction(transactionId)
 
     if (error) {
@@ -96,4 +113,3 @@ export function useTransactions() {
     refreshTransactions: loadTransactions,
   }
 }
-

@@ -1,13 +1,15 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Bot, Send, User } from "lucide-react"
+import { useTransactions } from "@/hooks/useTransactions"
+import { useSubscriptions } from "@/hooks/useSubscriptions"
+import { formatCurrency } from "@/lib/formatCurrency"
 
 type Message = {
   id: string
@@ -20,7 +22,7 @@ export function ChatbotWidget() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
-      content: "Hello! I'm your Finance Advice Bot. How can I help you today?",
+      content: "Hello! I'm your Finance Advice Bot. I can analyze your transactions and subscriptions to give you real-time tips. Ask me something like 'How is my spending looking?' or 'Tell me about my subscriptions'.",
       sender: "bot",
       timestamp: new Date(),
     },
@@ -28,6 +30,9 @@ export function ChatbotWidget() {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const { transactions } = useTransactions()
+  const { subscriptions } = useSubscriptions()
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -49,28 +54,70 @@ export function ChatbotWidget() {
     setInput("")
     setIsLoading(true)
 
-    // Simulate bot response
+    // Generate response using actual data context
     setTimeout(() => {
-      const botResponses = [
-        "Based on your spending patterns, I recommend reducing your dining out expenses by 15%.",
-        "You're doing great with your savings! You've saved 20% more than last month.",
-        "I notice you've been spending more on transportation. Have you considered carpooling or public transit?",
-        "Your investment portfolio is well-balanced. Consider adding more to your retirement fund.",
-        "You're on track to meet your financial goals this month!",
-      ]
+      const query = input.toLowerCase()
+      let reply = ""
 
-      const randomResponse = botResponses[Math.floor(Math.random() * botResponses.length)]
+      if (query.includes("spending") || query.includes("expense") || query.includes("cost") || query.includes("spent")) {
+        const expenses = transactions.filter((t) => t.type === "expense")
+        const totalExpense = expenses.reduce((sum, t) => sum + t.amount, 0)
+        const categoryBreakdown = expenses.reduce((acc, t) => {
+          const cat = t.categoryName || "Other"
+          acc[cat] = (acc[cat] || 0) + t.amount
+          return acc
+        }, {} as Record<string, number>)
+
+        const topCategory = Object.entries(categoryBreakdown).sort((a, b) => b[1] - a[1])[0]
+
+        reply = `You have spent a total of ${formatCurrency(totalExpense)} across ${expenses.length} transaction(s).`
+        if (topCategory) {
+          reply += ` Your highest category of spending is "${topCategory[0]}" with a total of ${formatCurrency(topCategory[1])}.`
+        }
+        if (totalExpense > 50000) {
+          reply += ` Consider reviewing your "${topCategory ? topCategory[0] : 'high spending'}" category to see where you can trim costs.`
+        }
+      } else if (query.includes("subscription") || query.includes("recurring") || query.includes("bill")) {
+        const activeSubs = subscriptions.filter((s) => s.status === "active")
+        const totalSubsCost = activeSubs.reduce((sum, s) => sum + s.amount, 0)
+        const upcomingRenewals = activeSubs.filter(
+          (s) => s.daysUntilRenewal !== undefined && s.daysUntilRenewal <= 7
+        )
+
+        reply = `You have ${activeSubs.length} active subscription(s) costing you ${formatCurrency(totalSubsCost)} per month.`
+        if (upcomingRenewals.length > 0) {
+          reply += ` You have ${upcomingRenewals.length} upcoming renewal(s) within the next 7 days: ${upcomingRenewals
+            .map((r) => `${r.name} (${formatCurrency(r.amount)})`)
+            .join(", ")}.`
+        } else {
+          reply += ` No renewals are scheduled within the next week.`
+        }
+      } else if (query.includes("income") || query.includes("salary") || query.includes("earn") || query.includes("deposit")) {
+        const incomes = transactions.filter((t) => t.type === "income")
+        const totalIncome = incomes.reduce((sum, t) => sum + t.amount, 0)
+        reply = `Your total recorded income is ${formatCurrency(totalIncome)} across ${incomes.length} transaction(s).`
+      } else if (query.includes("budget") || query.includes("limit") || query.includes("cap")) {
+        reply = `You can configure and track your category budgets directly in the categories card. Make sure your budgets are lower than your monthly income to hit your savings goals!`
+      } else {
+        const generalTips = [
+          "Based on your profile, we recommend saving at least 20% of your monthly income.",
+          "Try setting up auto-save rules for your income to build up your emergency fund.",
+          "Check your subscriptions list regularly — cancel any software or service you haven't used in the past 30 days.",
+          "Nigerian bank stock dividends and mutual funds are good options for your monthly investment allocations.",
+        ]
+        reply = generalTips[Math.floor(Math.random() * generalTips.length)]
+      }
 
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: randomResponse,
+        content: reply,
         sender: "bot",
         timestamp: new Date(),
       }
 
       setMessages((prev) => [...prev, botMessage])
       setIsLoading(false)
-    }, 1000)
+    }, 800)
   }
 
   return (

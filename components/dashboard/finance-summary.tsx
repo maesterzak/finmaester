@@ -3,11 +3,13 @@
 import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowDownIcon, ArrowUpIcon, DollarSign,CalendarDays } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, DollarSign, CalendarDays, TrendingUp } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useTransactions } from "@/hooks/useTransactions"
 import { calculateSummaryByPeriod } from "@/lib/calculations"
 import { formatCurrency } from "@/lib/formatCurrency"
+import { getInvestmentsSummary } from "@/lib/firebase/firestore"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 
 const months = [
   "January",
@@ -36,7 +38,7 @@ export function FinanceSummary() {
 
   const summaryData = useMemo(() => {
     if (loading || transactions.length === 0) {
-      return { income: 0, expenses: 0, balance: 0 }
+      return { income: 0, expenses: 0, balance: 0, invested: 0 }
     }
     return calculateSummaryByPeriod(transactions, period)
   }, [transactions, period, loading])
@@ -99,7 +101,7 @@ export function FinanceSummary() {
         )}
 
         <TabsContent value="daily" className="space-y-4 animate-fade-in">
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
               title="Income"
               amount={formatCurrency(dailySummary.income)}
@@ -115,6 +117,13 @@ export function FinanceSummary() {
               icon={DollarSign}
             />
             <SummaryCard
+              title="Invested"
+              amount={formatCurrency(dailySummary.invested)}
+              change=""
+              isPositive={true}
+              icon={TrendingUp}
+            />
+            <SummaryCard
               title="Balance"
               amount={formatCurrency(dailySummary.balance)}
               change=""
@@ -125,7 +134,7 @@ export function FinanceSummary() {
         </TabsContent>
 
         <TabsContent value="weekly" className="space-y-4 animate-fade-in">
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
               title="Income"
               amount={formatCurrency(weeklySummary.income)}
@@ -141,6 +150,13 @@ export function FinanceSummary() {
               icon={DollarSign}
             />
             <SummaryCard
+              title="Invested"
+              amount={formatCurrency(weeklySummary.invested)}
+              change=""
+              isPositive={true}
+              icon={TrendingUp}
+            />
+            <SummaryCard
               title="Balance"
               amount={formatCurrency(weeklySummary.balance)}
               change=""
@@ -151,7 +167,7 @@ export function FinanceSummary() {
         </TabsContent>
 
         <TabsContent value="monthly" className="space-y-4 animate-fade-in">
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
               title="Income"
               amount={formatCurrency(monthlySummary.income)}
@@ -167,6 +183,13 @@ export function FinanceSummary() {
               icon={DollarSign}
             />
             <SummaryCard
+              title="Invested"
+              amount={formatCurrency(monthlySummary.invested)}
+              change=""
+              isPositive={true}
+              icon={TrendingUp}
+            />
+            <SummaryCard
               title="Balance"
               amount={formatCurrency(monthlySummary.balance)}
               change=""
@@ -177,7 +200,7 @@ export function FinanceSummary() {
         </TabsContent>
 
         <TabsContent value="yearly" className="space-y-4 animate-fade-in">
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
               title="Income"
               amount={formatCurrency(yearlySummary.income)}
@@ -193,6 +216,13 @@ export function FinanceSummary() {
               icon={DollarSign}
             />
             <SummaryCard
+              title="Invested"
+              amount={formatCurrency(yearlySummary.invested)}
+              change=""
+              isPositive={true}
+              icon={TrendingUp}
+            />
+            <SummaryCard
               title="Balance"
               amount={formatCurrency(yearlySummary.balance)}
               change=""
@@ -202,6 +232,49 @@ export function FinanceSummary() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Investments Trend Chart */}
+      {!loading && transactions.some(t => t.type === 'investment') && (
+        <Card className="mt-6 border-border/50 backdrop-blur-sm bg-card/80">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" /> Investment Analytics (Last 12 Months)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <p className="text-sm text-muted-foreground mb-4">Monthly Contribution Trend</p>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={getInvestmentsSummary(transactions).monthlyInvested}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(20, 8%, 20%)" />
+                  <XAxis dataKey="name" stroke="hsl(0, 0%, 70%)" style={{ fontSize: "12px" }} />
+                  <YAxis stroke="hsl(0, 0%, 70%)" style={{ fontSize: "12px" }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(15, 20%, 12%)",
+                      border: "1px solid hsl(20, 8%, 20%)",
+                      borderRadius: "0.5rem",
+                    }}
+                    formatter={(value) => formatCurrency(Number(value))}
+                  />
+                  <Bar dataKey="invested" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground mb-4">Asset Allocation</p>
+              <div className="space-y-3">
+                {Object.entries(getInvestmentsSummary(transactions).assetBreakdown).map(([asset, amount]) => (
+                  <div key={asset} className="flex justify-between items-center p-3 rounded-lg border hover:bg-accent/50 transition-colors">
+                    <span className="font-medium">{asset}</span>
+                    <span className="font-semibold text-primary">{formatCurrency(amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
