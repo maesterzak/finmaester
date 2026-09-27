@@ -21,20 +21,20 @@ export function DashboardHeader({
   const isMobile = useIsMobile()
 
   return (
-    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-      <div className="flex items-center gap-3 w-full">
+    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+      <div className="flex items-center gap-3 w-full min-w-0">
         {isMobile && (
           <Button variant="outline" size="icon" onClick={() => setMobileOpen(true)} className="flex sm:hidden">
             <Menu className="h-5 w-5" />
             <span className="sr-only">Open menu</span>
           </Button>
         )}
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
           <p className="text-muted-foreground">{description}</p>
         </div>
       </div>
-      {action && <div className="w-full sm:w-auto">{action}</div>}
+      {action && <div className="w-full lg:w-auto shrink-0">{action}</div>}
     </div>
   )
 }

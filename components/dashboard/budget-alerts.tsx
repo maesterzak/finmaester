@@ -1,147 +1,114 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Progress } from "@/components/ui/progress"
-import { AlertTriangle, AlertCircle, CheckCircle2, BookOpen, Briefcase, Car, Coffee, Heart, Home, Landmark, ShoppingBag, Wallet } from 'lucide-react'
-import { Badge } from "@/components/ui/badge"
+import { useMemo } from "react"
+import Link from "next/link"
+import { format } from "date-fns"
+import { AlertTriangle, ArrowRight, CheckCircle2, Target } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import type { Category, Transaction } from "@/lib/firebase/firestore"
+import { budgetPaces, onlyExpenses } from "@/lib/analytics"
+import { getCategoryIcon } from "@/lib/category-icons"
 import { formatCurrency } from "@/lib/formatCurrency"
+import { monthKeyOf } from "@/lib/periods"
+import { cn } from "@/lib/utils"
 
-// Icon mapping
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  Briefcase: Briefcase,
-  Wallet: Wallet,
-  Car: Car,
-  BookOpen: BookOpen,
-  Heart: Heart,
-  ShoppingBag: ShoppingBag,
-  Landmark: Landmark,
-  Coffee: Coffee,
-  Home: Home,
+const statusStyle = {
+  over: { bar: "bg-red-500", text: "text-red-500", label: (spent: number, budget: number) => `Over by ${formatCurrency(spent - budget)}` },
+  "projected-over": { bar: "bg-amber-500", text: "text-amber-500", label: () => "On pace to overspend" },
+  warning: { bar: "bg-amber-500", text: "text-amber-500", label: (spent: number, budget: number) => `${formatCurrency(budget - spent)} left` },
+  good: { bar: "bg-emerald-500", text: "text-emerald-500", label: () => "" },
 }
 
-interface BudgetAlert {
-  categoryId: string
-  categoryName: string
-  spent: number
-  budget: number
-  icon: React.ComponentType<{ className?: string }>
-  severity: "warning" | "critical" | "ok"
-}
+// This month's budgets (the ones set on the Categories page), with a month-end projection
+export function BudgetAlerts({ categories, transactions }: { categories: Category[]; transactions: Transaction[] }) {
+  const monthKey = monthKeyOf(new Date())
+  const paces = useMemo(
+    () => budgetPaces(categories, onlyExpenses(transactions), monthKey),
+    [categories, transactions, monthKey],
+  )
+  const alerts = paces.filter((p) => p.status !== "good")
+  const monthName = format(new Date(), "MMMM")
 
-interface BudgetAlertsProps {
-  categories: Array<{
-    id?: string
-    name: string
-    icon: string
-    budget: number
-    spent?: number
-  }>
-}
-
-export function BudgetAlerts({ categories }: BudgetAlertsProps) {
-  const budgetAlerts: BudgetAlert[] = categories
-    .map((cat) => {
-      const spent = cat.spent || 0
-      const budget = cat.budget || 0
-      const percentage = budget > 0 ? (spent / budget) * 100 : 0
-      let severity: "warning" | "critical" | "ok" = "ok"
-
-      if (percentage >= 100) severity = "critical"
-      else if (percentage >= 75) severity = "warning"
-
-      // Get icon component from icon name string
-      const IconComponent = iconMap[cat.icon] || ShoppingBag
-
-      return {
-        categoryId: cat.id || "",
-        categoryName: cat.name,
-        spent,
-        budget,
-        icon: IconComponent,
-        severity,
-      }
-    })
-    .filter((alert) => alert.severity !== "ok")
-    .sort((a, b) => {
-      if (a.severity === "critical" && b.severity !== "critical") return -1
-      if (a.severity !== "critical" && b.severity === "critical") return 1
-      return 0
-    })
-
-  if (budgetAlerts.length === 0) {
+  if (paces.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-            Budget Status
-          </CardTitle>
-          <CardDescription>All categories are within budget</CardDescription>
-        </CardHeader>
+      <Card className="border-border/50">
+        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <Target className="h-5 w-5 text-primary shrink-0" />
+          <p className="text-sm text-muted-foreground flex-1">
+            No budgets set for {monthName}. Budgets warn you before you overspend.
+          </p>
+          <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
+            <Link href="/dashboard/categories">Set budgets</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (alerts.length === 0) {
+    return (
+      <Card className="border-border/50">
+        <CardContent className="p-4 flex items-center gap-3">
+          <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
+          <p className="text-sm">
+            All {paces.length} budget{paces.length !== 1 ? "s" : ""} for {monthName} are on track.
+          </p>
+        </CardContent>
       </Card>
     )
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {budgetAlerts.some((a) => a.severity === "critical") ? (
-            <AlertTriangle className="h-5 w-5 text-destructive" />
-          ) : (
-            <AlertCircle className="h-5 w-5 text-yellow-500" />
-          )}
-          Budget Alerts
-        </CardTitle>
-        <CardDescription>
-          {budgetAlerts.filter((a) => a.severity === "critical").length} critical,{" "}
-          {budgetAlerts.filter((a) => a.severity === "warning").length} warnings
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {budgetAlerts.map((alert) => (
-          <Alert
-            key={alert.categoryId}
-            className={
-              alert.severity === "critical"
-                ? "border-destructive/50 bg-destructive/5"
-                : "border-yellow-500/50 bg-yellow-500/5"
-            }
-          >
-            <div className="flex gap-4 w-full">
-              <div className="flex-1">
-                <AlertTitle className="flex items-center gap-2">
-                  <alert.icon className="h-4 w-4" />
-                  {alert.categoryName}
-                  <Badge
-                    variant={alert.severity === "critical" ? "destructive" : "outline"}
-                    className="ml-auto"
-                  >
-                    {Math.round((alert.spent / alert.budget) * 100)}%
-                  </Badge>
-                </AlertTitle>
-                <AlertDescription className="mt-2">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>{formatCurrency(alert.spent)} of {formatCurrency(alert.budget)}</span>
-                      <span className="text-muted-foreground">
-                        {formatCurrency(Math.max(0, alert.budget - alert.spent))} remaining
-                      </span>
-                    </div>
-                    <Progress
-                      value={Math.min(100, (alert.spent / alert.budget) * 100)}
-                      className="h-2"
-                      indicatorlassName={
-                        alert.severity === "critical" ? "bg-destructive" : "bg-yellow-500"
-                      }
-                    />
-                  </div>
-                </AlertDescription>
-              </div>
-            </div>
-          </Alert>
-        ))}
+    <Card className="border-amber-500/30">
+      <CardContent className="p-4 space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-semibold flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            {alerts.length} budget{alerts.length !== 1 ? "s" : ""} need attention
+          </p>
+          <Button asChild variant="ghost" size="sm" className="gap-1 shrink-0">
+            <Link href="/dashboard/categories">
+              Budgets <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </div>
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {alerts.slice(0, 4).map((pace, index) => {
+            const style = statusStyle[pace.status]
+            const Icon = getCategoryIcon(pace.icon)
+            return (
+              // Phones show the two most urgent to keep the dashboard short
+              <li key={pace.id} className={cn("rounded-lg bg-muted/40 p-3 space-y-2", index >= 2 && "hidden sm:block")}>
+                <div className="text-sm min-w-0">
+                  <p className="flex items-center gap-2 font-medium min-w-0">
+                    <Icon className="h-4 w-4 shrink-0" style={{ color: pace.color }} />
+                    <span className="truncate">{pace.name}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatCurrency(pace.spent)} of {formatCurrency(pace.budget)}
+                  </p>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn("h-full rounded-full", style.bar)}
+                    style={{ width: `${Math.min(pace.percentUsed, 100)}%` }}
+                  />
+                </div>
+                <p className={cn("text-xs font-medium", style.text)}>{style.label(pace.spent, pace.budget)}</p>
+              </li>
+            )
+          })}
+        </ul>
+        {alerts.length > 2 && (
+          <p className="text-xs text-muted-foreground">
+            <span className="sm:hidden">and {alerts.length - 2} more · </span>
+            {alerts.length > 4 && <span className="hidden sm:inline">and {alerts.length - 4} more · </span>}
+            <a href="/dashboard/categories" className="text-primary hover:underline">
+              see all budgets
+            </a>
+          </p>
+        )}
       </CardContent>
     </Card>
   )

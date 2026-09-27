@@ -1,112 +1,81 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { ArrowDownIcon, ArrowUpIcon, BookOpen, Car, Coffee, Heart, Home, Landmark, Search, ShoppingBag, Wallet } from "lucide-react"
-import { Input } from "@/components/ui/input"
+import { useMemo } from "react"
 import Link from "next/link"
+import { format } from "date-fns"
+import { ArrowRight, Receipt } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { TransactionAmount } from "@/components/transactions/transaction-amount"
 import { useTransactions } from "@/hooks/useTransactions"
-import { formatCurrency } from "@/lib/formatCurrency"
+import type { Category } from "@/lib/firebase/firestore"
+import { indexCategories, resolveCategory } from "@/lib/analytics"
+import { getCategoryIcon } from "@/lib/category-icons"
+import { fromDateKey } from "@/lib/periods"
 
-// Icon mapping
-const iconMap: Record<string, any> = {
-  Briefcase: ShoppingBag,
-  Wallet: Wallet,
-  Car: Car,
-  BookOpen: BookOpen,
-  Heart: Heart,
-  ShoppingBag: ShoppingBag,
-  Landmark: Landmark,
-  Coffee: Coffee,
-  Home: Home,
-}
+const INVESTMENT_COLOR = "hsl(217, 91%, 60%)"
 
-export function RecentTransactions() {
-  const { transactions, loading } = useTransactions()
-  const [searchQuery, setSearchQuery] = useState("")
-
-  const filteredTransactions = useMemo(() => {
-    const recent = transactions.slice(0, 5) // Get only the 5 most recent
-    return recent.filter(
-      (transaction) =>
-        transaction.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (transaction.categoryName || "").toLowerCase().includes(searchQuery.toLowerCase()),
-    )
-  }, [transactions, searchQuery])
+export function RecentTransactions({ categories }: { categories: Category[] }) {
+  const { transactions, loading } = useTransactions({ limitCount: 6 })
+  const categoriesById = useMemo(() => indexCategories(categories), [categories])
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <CardTitle>Recent Transactions</CardTitle>
-            <CardDescription>Your latest income and expenses</CardDescription>
+    <Card className="border-border/50">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="text-xl">Recent Transactions</CardTitle>
+            <CardDescription>Your latest activity</CardDescription>
           </div>
-          <div className="w-full sm:w-auto">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search transactions..."
-                className="w-full sm:w-[250px] pl-8"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
+          <Button asChild variant="ghost" size="sm" className="gap-1 shrink-0">
+            <Link href="/dashboard/transactions">
+              View all <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          {loading ? (
-            <div className="text-center py-6 text-muted-foreground">Loading transactions...</div>
-          ) : filteredTransactions.length > 0 ? (
-            filteredTransactions.map((transaction) => {
-              const IconComponent = iconMap[(transaction as any).icon] || ShoppingBag
+        {loading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 w-full" />
+            ))}
+          </div>
+        ) : transactions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Receipt className="h-10 w-10 text-muted-foreground/50 mb-2" />
+            <p className="text-sm text-muted-foreground">No transactions yet.</p>
+            <Button asChild size="sm" className="mt-3">
+              <Link href="/dashboard/transactions">Add your first transaction</Link>
+            </Button>
+          </div>
+        ) : (
+          <ul className="divide-y divide-border">
+            {transactions.map((tx) => {
+              const category =
+                tx.type === "investment"
+                  ? { name: tx.assetName || "Investment", color: INVESTMENT_COLOR, icon: "Coins" }
+                  : resolveCategory(tx.categoryId, tx.categoryName, categoriesById)
+              const Icon = getCategoryIcon(category.icon)
               return (
-                <div key={transaction.id} className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`p-2 rounded-full ${transaction.type === "income" ? "bg-green-100 dark:bg-green-900" : "bg-red-100 dark:bg-red-900"}`}
-                    >
-                      <IconComponent
-                        className={`h-5 w-5 ${transaction.type === "income" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
-                      />
-                    </div>
-                    <div>
-                      <p className="font-medium">{transaction.categoryName || "Uncategorized"}</p>
-                      <p className="text-sm text-muted-foreground">{transaction.description}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center justify-end">
-                      {transaction.type === "income" ? (
-                        <ArrowUpIcon className="mr-1 h-4 w-4 text-green-500" />
-                      ) : (
-                        <ArrowDownIcon className="mr-1 h-4 w-4 text-red-500" />
-                      )}
-                      <p
-                      className={`font-medium ${transaction.type === "income" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
-                    >
-                      {formatCurrency(transaction.amount)}
+                <li key={tx.id} className="flex items-center gap-3 py-3">
+                  <span className="p-2 rounded-lg shrink-0" style={{ backgroundColor: `${category.color}20` }}>
+                    <Icon className="h-4 w-4" style={{ color: category.color }} />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{tx.description || category.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {category.name} · {tx.date ? format(fromDateKey(tx.date), "d MMM") : "—"}
                     </p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{new Date(transaction.date).toLocaleDateString()}</p>
                   </div>
-                </div>
+                  <TransactionAmount transaction={tx} className="text-sm" />
+                </li>
               )
-            })
-          ) : (
-            <div className="text-center py-6 text-muted-foreground">No transactions found matching your search.</div>
-          )}
-        </div>
+            })}
+          </ul>
+        )}
       </CardContent>
-      <CardFooter className="flex justify-center">
-        <Button variant="outline" asChild>
-          <Link href="/dashboard/transactions">View All Transactions</Link>
-        </Button>
-      </CardFooter>
     </Card>
   )
 }

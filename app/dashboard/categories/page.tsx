@@ -36,7 +36,7 @@ export default function CategoriesPage() {
     <div className="container mx-auto p-4 md:p-6">
       <DashboardHeader
         title="Categories"
-        description="Manage your expense categories"
+        description="Group your spending and set a budget for each month"
         action={<AddCategoryButton onClick={() => setTriggerAdd(prev => prev + 1)} />}
       />
       <div className="flex flex-wrap items-center gap-3 mb-6 p-4 bg-card rounded-xl border border-border/50">

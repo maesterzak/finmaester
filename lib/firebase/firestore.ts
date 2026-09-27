@@ -14,6 +14,7 @@ import {
   QueryConstraint,
   writeBatch,
   setDoc,
+  FieldPath,
 } from "firebase/firestore"
 import { db } from "./config"
 import { tr } from "date-fns/locale"
@@ -22,7 +23,7 @@ import { tr } from "date-fns/locale"
 export interface Transaction {
   id?: string
   userId: string
-  type: "income" | "expense"
+  type: "income" | "expense" | "investment"
   amount: number
   description: string
   categoryId: string
@@ -30,6 +31,13 @@ export interface Transaction {
   date: string
   createdAt?: Timestamp
   updatedAt?: Timestamp
+  assetName?: string
+  assetType?: "stock" | "mutual_fund" | "crypto" | "fixed_income" | "other"
+  units?: number
+  unitPrice?: number
+  // Investment card (and crypto token) this contribution belongs to
+  investmentAccountId?: string
+  investmentTokenId?: string
 }
 
 export interface Category {
@@ -86,6 +94,28 @@ export interface Subscription {
   updatedAt?: Timestamp
 }
 
+export interface RecurringExpense {
+  id?: string
+  userId: string
+  name: string
+  amount: number
+  frequency: "weekly" | "monthly" | "yearly"
+  nextDue: string
+  createdAt?: Timestamp
+  updatedAt?: Timestamp
+}
+
+export interface IncomeSource {
+  id?: string
+  userId: string
+  name: string
+  averageMonthly: number
+  lastPayment: string
+  category: string
+  createdAt?: Timestamp
+  updatedAt?: Timestamp
+}
+
 interface GroupedTransactions {
   [categoryId: string]: Transaction[]
 }
@@ -114,7 +144,6 @@ export const getTransactions = async (userId: string, constraints: QueryConstrai
 
 export const addTransaction = async (transaction: Omit<Transaction, "id" | "createdAt" | "updatedAt">) => {
   try {
-    console.log("Adding transaction", transaction)
     const transactionsRef = collection(db, "transactions")
     const newTransaction = {
       ...transaction,
@@ -122,26 +151,13 @@ export const addTransaction = async (transaction: Omit<Transaction, "id" | "crea
       updatedAt: Timestamp.now(),
     }
 
-  //   let currentCatData = await  getCategory(transaction.categoryId);
-  //   let category = currentCatData.data;
-
-  //  console.log("Current category data", category?.spent);
-  //   let newTotalSpent = category?.spent ? category.spent + transaction.amount : transaction.amount;
-
-
     const docRef = await addDoc(transactionsRef, newTransaction)
-    //  const updaedCategory = {
-    //   id: transaction.categoryId,
-      
-    //    spent: newTotalSpent,
-    //   transactions: category?.transactions?.push(docRef.id || ""),
-    // }
     return { id: docRef.id, error: null }
   } catch (error: any) {
-    console.error("Error adding transaction", error)
     return { id: null, error: error.message }
   }
 }
+
 
 export const updateTransaction = async (transactionId: string, updates: Partial<Transaction>) => {
   try {
@@ -168,56 +184,20 @@ export const deleteTransaction = async (transactionId: string) => {
 
 // Categories
 
-// export const getCategories = async (userId: string) => {
-//   try {
-//     const categoriesRef = collection(db, "categories")
-//     console.log("Getting categories for user", userId)
-//     const q = query(categoriesRef, where("userId", "==", userId), orderBy("createdAt", "desc"))
-//     const querySnapshot = await getDocs(q)
-//     const categories: Category[] = []
-
-
-
-//     querySnapshot.forEach((doc) => {
-//       categories.push({ id: doc.id, ...doc.data() } as Category)
-//     })
-
-//     let transactions = await getTransactions(userId);
-//     if(transactions.error){
-//       return { data: [], error: transactions.error }
-//     }
-//     const groupedTransactions: GroupedTransactions = {}
-
-// transactions.data.forEach((transaction) => {
-//   const key = transaction.categoryId || ""  // empty string for uncategorized
-//   if (!groupedTransactions[key]) {
-//     groupedTransactions[key] = []
-//   }
-//   groupedTransactions[key].push(transaction)
-// })
-
-// console.log(groupedTransactions)
-
-// categories.forEach((category) => {
-//   const catTransactions = groupedTransactions[category.id || ""] || []
-//   let totalSpent = 0
-//   if(catTransactions.length > 0){
-//    totalSpent = catTransactions.reduce((sum, transaction) => sum + transaction.amount, 0)
-
-// console.log(totalSpent) // 175
-//   }
-  
-
-//   category.spent = totalSpent
-  
-// })
-// console.log("returned info", categories)
-//      return { data: categories, error: null }
-//   } catch (error: any) {
-//     console.error("Error getting categories", error)
-//     return { data: [], error: error.message }
-//   }
-// }
+// Category documents only. Spending is computed from the already-loaded transactions
+// (see FinanceDataProvider) instead of fetching every transaction again.
+export const getCategoryDocs = async (userId: string) => {
+  try {
+    const q = query(collection(db!, "categories"), where("userId", "==", userId), orderBy("createdAt", "desc"))
+    const querySnapshot = await getDocs(q)
+    return {
+      data: querySnapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Category),
+      error: null,
+    }
+  } catch (error: any) {
+    return { data: [] as Category[], error: error.message as string }
+  }
+}
 
 export const getCategories = async (userId: string) => {
   try {
@@ -251,6 +231,8 @@ export const getCategories = async (userId: string) => {
     } = {}
 
     transactions.data.forEach((tx) => {
+      // Only expenses count toward a category's spending
+      if (tx.type !== "expense") return
       const catId = tx.categoryId || ""
       const yearMonth = tx.date.slice(0, 7) // "2025-11-28" → "2025-11"
 
@@ -285,8 +267,6 @@ export interface CategoryResponse {
 
 export const getCategory = async (categoryId: string): Promise<CategoryResponse> => {
   try {
-    console.log("Getting category", categoryId)
-
     const docRef = doc(db, "categories", categoryId)
     const docSnap = await getDoc(docRef)
     
@@ -299,7 +279,6 @@ export const getCategory = async (categoryId: string): Promise<CategoryResponse>
       error: null,
     }
   } catch (error: any) {
-    console.error("Error getting category", error)
     return { data: null, error: error.message }
   }
 }
@@ -328,6 +307,17 @@ export const updateCategory = async (categoryId: string, updates: Partial<Catego
       ...updates,
       updatedAt: Timestamp.now(),
     })
+    return { success: true, error: null }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+// Sets one month's budget without touching the budgets stored for other months
+export const setCategoryMonthlyBudget = async (categoryId: string, monthKey: string, amount: number) => {
+  try {
+    const categoryRef = doc(db, "categories", categoryId)
+    await updateDoc(categoryRef, new FieldPath("monthlyBudgets", monthKey), amount, "updatedAt", Timestamp.now())
     return { success: true, error: null }
   } catch (error: any) {
     return { success: false, error: error.message }
@@ -381,6 +371,11 @@ export function getIncomeVsExpenseLast12Months(transactions: Transaction[]) {
   return results
 }
 
+export function getIncomeVsExpenseLast5Months(transactions: Transaction[]) {
+  return getIncomeVsExpenseLast12Months(transactions).slice(-5)
+}
+
+
 export function getExpensesLast30Days(transactions: Transaction[]) {
   const results: { name: number; expense: number }[] = []
 
@@ -407,6 +402,42 @@ export function getExpensesLast30Days(transactions: Transaction[]) {
 
   return results
 }
+
+export function getInvestmentsSummary(transactions: Transaction[]) {
+  const investments = transactions.filter((t) => t.type === "investment")
+  
+  const totalInvested = investments.reduce((sum, t) => sum + t.amount, 0)
+  
+  const assetBreakdown = investments.reduce((acc, t) => {
+    const name = t.assetName || "Other"
+    acc[name] = (acc[name] || 0) + t.amount
+    return acc
+  }, {} as Record<string, number>)
+  
+  const monthlyInvested: { name: string; invested: number }[] = []
+  const now = new Date()
+  
+  for (let i = 11; i >= 0; i--) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+    
+    const monthTotal = investments
+      .filter((t) => t.date.slice(0, 7) === yearMonth)
+      .reduce((sum, t) => sum + t.amount, 0)
+      
+    monthlyInvested.push({
+      name: MONTH_NAMES[date.getMonth()],
+      invested: monthTotal,
+    })
+  }
+  
+  return {
+    totalInvested,
+    assetBreakdown,
+    monthlyInvested,
+  }
+}
+
 
 // User Settings
 export const getUserSettings = async (userId: string) => {
@@ -551,5 +582,119 @@ export const calculateCategorySpent = async (userId: string, categoryId: string)
     return 0
   }
 }
+
+// Recurring Expenses
+export const getRecurringExpenses = async (userId: string) => {
+  try {
+    const recurringRef = collection(db, "recurringExpenses")
+    // No orderBy: userId + nextDue ordering needs a composite index; callers sort by due date themselves
+    const q = query(recurringRef, where("userId", "==", userId))
+    const querySnapshot = await getDocs(q)
+    const expenses: RecurringExpense[] = []
+    querySnapshot.forEach((doc) => {
+      expenses.push({ id: doc.id, ...doc.data() } as RecurringExpense)
+    })
+    return { data: expenses, error: null }
+  } catch (error: any) {
+    console.error("Failed to load recurring expenses:", error?.code, error?.message)
+    return { data: [], error: error.message }
+  }
+}
+
+export const addRecurringExpense = async (expense: Omit<RecurringExpense, "id" | "createdAt" | "updatedAt">) => {
+  try {
+    const recurringRef = collection(db, "recurringExpenses")
+    const newExpense = {
+      ...expense,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    }
+    const docRef = await addDoc(recurringRef, newExpense)
+    return { id: docRef.id, error: null }
+  } catch (error: any) {
+    return { id: null, error: error.message }
+  }
+}
+
+export const updateRecurringExpense = async (expenseId: string, updates: Partial<RecurringExpense>) => {
+  try {
+    const expenseRef = doc(db, "recurringExpenses", expenseId)
+    await updateDoc(expenseRef, {
+      ...updates,
+      updatedAt: Timestamp.now(),
+    })
+    return { success: true, error: null }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+export const deleteRecurringExpense = async (expenseId: string) => {
+  try {
+    const expenseRef = doc(db, "recurringExpenses", expenseId)
+    await deleteDoc(expenseRef)
+    return { success: true, error: null }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+// Income Sources
+export const getIncomeSources = async (userId: string) => {
+  try {
+    const sourcesRef = collection(db, "incomeSources")
+    const q = query(
+      sourcesRef,
+      where("userId", "==", userId)
+    )
+    const querySnapshot = await getDocs(q)
+    const sources: IncomeSource[] = []
+    querySnapshot.forEach((doc) => {
+      sources.push({ id: doc.id, ...doc.data() } as IncomeSource)
+    })
+    return { data: sources, error: null }
+  } catch (error: any) {
+    return { data: [], error: error.message }
+  }
+}
+
+export const addIncomeSource = async (source: Omit<IncomeSource, "id" | "createdAt" | "updatedAt">) => {
+  try {
+    const sourcesRef = collection(db, "incomeSources")
+    const newSource = {
+      ...source,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    }
+    const docRef = await addDoc(sourcesRef, newSource)
+    return { id: docRef.id, error: null }
+  } catch (error: any) {
+    return { id: null, error: error.message }
+  }
+}
+
+export const updateIncomeSource = async (sourceId: string, updates: Partial<IncomeSource>) => {
+  try {
+    const sourceRef = doc(db, "incomeSources", sourceId)
+    await updateDoc(sourceRef, {
+      ...updates,
+      updatedAt: Timestamp.now(),
+    })
+    return { success: true, error: null }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+export const deleteIncomeSource = async (sourceId: string) => {
+  try {
+    const sourceRef = doc(db, "incomeSources", sourceId)
+    await deleteDoc(sourceRef)
+    return { success: true, error: null }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
 
 

@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useMemo } from "react"
 import { useAuth } from "@/contexts/AuthContext"
+import { useFinanceResource } from "@/contexts/FinanceDataContext"
 import {
-  getTransactions,
   addTransaction,
   updateTransaction,
   deleteTransaction,
@@ -11,38 +11,29 @@ import {
 } from "@/lib/firebase/firestore"
 import { toastSuccess, toastError } from "@/lib/toast"
 
-export function useTransactions() {
+interface UseTransactionsOptions {
+  limitCount?: number
+  startDate?: string
+  endDate?: string
+}
+
+// Reads from the shared FinanceDataProvider, so every widget uses one fetch of the user's transactions
+export function useTransactions(options?: UseTransactionsOptions) {
   const { user } = useAuth()
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, loading, reload } = useFinanceResource("transactions")
 
-  useEffect(() => {
-    if (user) {
-      loadTransactions()
-    } else {
-      setTransactions([])
-      setLoading(false)
-    }
-  }, [user])
-
-  const loadTransactions = async () => {
-    if (!user) return
-
-    setLoading(true)
-    const { data, error } = await getTransactions(user.uid)
-    if (error) {
-      toastError("Failed to load transactions")
-    } else {
-      setTransactions(data)
-    }
-    setLoading(false)
-  }
+  const { startDate, endDate, limitCount } = options ?? {}
+  const transactions = useMemo(() => {
+    let list = data
+    if (startDate) list = list.filter((t) => t.date >= startDate)
+    if (endDate) list = list.filter((t) => t.date <= endDate)
+    if (limitCount) list = list.slice(0, limitCount)
+    return list
+  }, [data, startDate, endDate, limitCount])
 
   const handleAddTransaction = async (transactionData: Omit<Transaction, "id" | "userId" | "createdAt" | "updatedAt">) => {
-    console.log("Adding transaction 2", transactionData)
-    if (!user) return
-    console.log("Adding transaction", transactionData)
-    const { id, error } = await addTransaction({
+    if (!user) return false
+    const { error } = await addTransaction({
       ...transactionData,
       userId: user.uid,
     })
@@ -50,41 +41,36 @@ export function useTransactions() {
     if (error) {
       toastError("Failed to add transaction")
       return false
-    } else {
-      toastSuccess("Transaction added successfully")
-      await loadTransactions()
-      return true
     }
+    toastSuccess("Transaction added successfully")
+    await reload()
+    return true
   }
 
   const handleUpdateTransaction = async (transactionId: string, updates: Partial<Transaction>) => {
-    if (!user) return
-
-    const { success, error } = await updateTransaction(transactionId, updates)
+    if (!user) return false
+    const { error } = await updateTransaction(transactionId, updates)
 
     if (error) {
       toastError("Failed to update transaction")
       return false
-    } else {
-      toastSuccess("Transaction updated successfully")
-      await loadTransactions()
-      return true
     }
+    toastSuccess("Transaction updated successfully")
+    await reload()
+    return true
   }
 
   const handleDeleteTransaction = async (transactionId: string) => {
-    if (!user) return
-
-    const { success, error } = await deleteTransaction(transactionId)
+    if (!user) return false
+    const { error } = await deleteTransaction(transactionId)
 
     if (error) {
       toastError("Failed to delete transaction")
       return false
-    } else {
-      toastSuccess("Transaction deleted successfully")
-      await loadTransactions()
-      return true
     }
+    toastSuccess("Transaction deleted successfully")
+    await reload()
+    return true
   }
 
   return {
@@ -93,7 +79,6 @@ export function useTransactions() {
     addTransaction: handleAddTransaction,
     updateTransaction: handleUpdateTransaction,
     deleteTransaction: handleDeleteTransaction,
-    refreshTransactions: loadTransactions,
+    refreshTransactions: reload,
   }
 }
-

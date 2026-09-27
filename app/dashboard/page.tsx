@@ -1,77 +1,75 @@
 "use client"
 
+import { useMemo, useState } from "react"
+import { format } from "date-fns"
+import { Plus } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { FinanceSummary } from "@/components/dashboard/finance-summary"
 import { ExpenseCharts } from "@/components/dashboard/expense-charts"
 import { RecentTransactions } from "@/components/dashboard/recent-transactions"
-import { ChatbotWidget } from "@/components/dashboard/chatbot-widget"
+import { AiAdvisor } from "@/components/dashboard/ai-advisor"
 import { BudgetAlerts } from "@/components/dashboard/budget-alerts"
-import { IncomeVsExpense } from "@/components/dashboard/income-vs-expense"
 import { RecurringExpenses } from "@/components/dashboard/recurring-expenses"
+import { TargetWidget } from "@/components/investments/target-card"
+import { AddTransactionDialog } from "@/components/transactions/add-transaction-dialog"
+import { toTransactionFields } from "@/components/transactions/transaction-fields"
+import { useAuth } from "@/contexts/AuthContext"
 import { useCategories } from "@/hooks/useCategories"
 import { useTransactions } from "@/hooks/useTransactions"
-import { useMemo } from "react"
+import { useInvestments } from "@/hooks/useInvestments"
+import { targetProgress } from "@/lib/investments"
+
+function greeting(hour: number) {
+  if (hour < 12) return "Good morning"
+  if (hour < 17) return "Good afternoon"
+  return "Good evening"
+}
 
 export default function DashboardPage() {
+  const { user } = useAuth()
   const { categories, loading: categoriesLoading } = useCategories()
-  const { transactions } = useTransactions()
+  const { transactions, addTransaction } = useTransactions()
+  const { targets, loading: investmentsLoading } = useInvestments()
+  const [addOpen, setAddOpen] = useState(false)
 
-  // Calculate spent amounts for each category
-  const categoriesWithSpent = useMemo(() => {
-    return categories.map((category) => {
-      const currentMonth = new Date().toISOString().slice(0, 7) 
-      const categoryTransactions = transactions.filter(
-  (t) =>
-    t.categoryId === category.id &&
-    t.type === "expense" &&
-    t.date.slice(0, 7) === currentMonth
-)
-      const spent = categoryTransactions.reduce((sum, t) => sum + t.amount, 0)
-      return {
-        ...category,
-        spent,
-      }
-    })
-  }, [categories, transactions])
+  const investmentProgress = useMemo(() => targetProgress(transactions, targets), [transactions, targets])
+  const firstName = user?.displayName?.split(" ")[0]
+  const now = new Date()
 
   return (
-    <div className="min-h-screen bg-background p-3 sm:p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-6 md:space-y-8 animate-fade-in">
-        <DashboardHeader />
+    <div className="container mx-auto p-4 md:p-6 space-y-6">
+      <DashboardHeader
+        title={`${greeting(now.getHours())}${firstName ? `, ${firstName}` : ""}`}
+        description={`Here's your money at a glance · ${format(now, "EEEE, d MMMM")}`}
+        action={
+          <Button onClick={() => setAddOpen(true)} className="w-full sm:w-auto gap-1.5">
+            <Plus className="h-4 w-4" /> Add transaction
+          </Button>
+        }
+      />
 
-        <div className="animate-slide-in" style={{ animationDelay: "0.05s" }}>
-          <BudgetAlerts categories={categoriesWithSpent} />
+      {!categoriesLoading && <BudgetAlerts categories={categories} transactions={transactions} />}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-6 min-w-0">
+          <FinanceSummary />
+          <ExpenseCharts transactions={transactions} categories={categories} />
+          <RecentTransactions categories={categories} />
+          <RecurringExpenses />
         </div>
 
-        {/* Main content grid - responsive for all devices */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
-          {/* Left column - main content */}
-          <div className="lg:col-span-2 space-y-6 md:space-y-8">
-            <div className="animate-slide-in" style={{ animationDelay: "0.1s" }}>
-              <FinanceSummary />
-            </div>
-
-            
-
-            <div className="animate-slide-in" style={{ animationDelay: "0.2s" }}>
-              <ExpenseCharts transactions={transactions} />
-            </div>
-
-            <div className="animate-slide-in" style={{ animationDelay: "0.25s" }}>
-              <RecurringExpenses />
-            </div>
-
-            <div className="animate-slide-in" style={{ animationDelay: "0.3s" }}>
-              <RecentTransactions />
-            </div>
-          </div>
-
-          {/* Right column - sidebar widget */}
-          <div className="animate-slide-in" style={{ animationDelay: "0.4s" }}>
-            <ChatbotWidget />
-          </div>
+        <div className="space-y-6 min-w-0">
+          {!investmentsLoading && <TargetWidget progress={investmentProgress} />}
+          <AiAdvisor />
         </div>
       </div>
+
+      <AddTransactionDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onAdd={(tx) => addTransaction(toTransactionFields(tx))}
+      />
     </div>
   )
 }

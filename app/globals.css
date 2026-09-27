@@ -202,3 +202,16 @@
   background: hsl(45 93% 47%);
   color: hsl(15 20% 8%);
 }
+
+/*
+ * iOS Safari zooms into any focused field with a font size under 16px, which shifts the layout.
+ * Inputs shrink to 14px from the md breakpoint (md:text-sm), which landscape phones and tablets hit,
+ * so keep form fields at 16px on every touch device.
+ */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

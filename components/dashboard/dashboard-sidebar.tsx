@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { ModeToggle } from "@/components/mode-toggle"
-import { BarChart3, Home, PlusCircle, Settings, Share2, LogOut, User, Layers } from "lucide-react"
+import { BarChart3, Home, PlusCircle, Settings, LogOut, User, Layers, PiggyBank, FileText } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { Logo } from "../logo"
 
@@ -86,10 +86,22 @@ export function DashboardSidebar() {
             isActive={pathname === "/dashboard/categories"}
           />
           <MenuItem
-            href="/dashboard/sharing"
-            icon={Share2}
-            label="Sharing"
-            isActive={pathname === "/dashboard/sharing"}
+            href="/dashboard/investments"
+            icon={PiggyBank}
+            label="Investments"
+            isActive={pathname === "/dashboard/investments"}
+          />
+          <MenuItem
+            href="/dashboard/analytics"
+            icon={BarChart3}
+            label="Analytics"
+            isActive={pathname === "/dashboard/analytics"}
+          />
+          <MenuItem
+            href="/dashboard/reports"
+            icon={FileText}
+            label="Reports"
+            isActive={pathname === "/dashboard/reports"}
           />
           <MenuItem
             href="/dashboard/settings"
@@ -100,17 +112,17 @@ export function DashboardSidebar() {
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter>
-        <div className={cn("flex items-center", expanded || isMobile ? "justify-between" : "justify-center")}>
+        <div className={cn("flex items-center gap-2 min-w-0", expanded || isMobile ? "justify-between" : "justify-center")}>
           {expanded || isMobile ? (
             <>
-              <div className="flex items-center gap-2">
-                <User className="h-8 w-8 rounded-full bg-muted p-1" />
-                <div>
-                  <p className="text-sm font-medium">{user?.displayName || "User"}</p>
-                  <p className="text-xs text-muted-foreground">{user?.email || ""}</p>
+              <div className="flex items-center gap-2 min-w-0">
+                <User className="h-8 w-8 shrink-0 rounded-full bg-muted p-1" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{user?.displayName || "User"}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email || ""}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 shrink-0">
                 <ModeToggle />
                 <Button variant="ghost" size="icon" onClick={handleLogout}>
                   <LogOut className="h-5 w-5" />

@@ -4,6 +4,7 @@ export interface SummaryData {
   income: number
   expenses: number
   balance: number
+  invested: number
 }
 
 export function calculateSummary(transactions: Transaction[]): SummaryData {
@@ -15,9 +16,13 @@ export function calculateSummary(transactions: Transaction[]): SummaryData {
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + t.amount, 0)
 
+  const invested = transactions
+    .filter((t) => t.type === "investment")
+    .reduce((sum, t) => sum + t.amount, 0)
+
   const balance = income - expenses
 
-  return { income, expenses, balance }
+  return { income, expenses, balance, invested }
 }
 
 export function calculateSummaryByPeriod(
