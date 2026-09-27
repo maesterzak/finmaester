@@ -21,10 +21,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useCategories } from "@/hooks/useCategories"
-import { useProfiles } from "@/hooks/useProfile"
-import { getCurrencySymbol } from "@/lib/currency"
 import { fromDateKey, toDateKey } from "@/lib/periods"
 import { getCategoryIcon } from "@/lib/category-icons"
+import { currencySymbol, symbolInputPadding } from "@/lib/formatCurrency"
 import Link from "next/link"
 import { useInvestments } from "@/hooks/useInvestments"
 import { legacyAssetType } from "@/lib/investments"
@@ -64,9 +63,9 @@ export function AddTransactionDialog({
   defaults,
 }: AddTransactionDialogProps) {
   const { categories } = useCategories()
-  const { accounts: investmentAccounts, refresh: refreshInvestments } = useInvestments()
-  const { loadProfile } = useProfiles()
-  const [currencySymbol, setCurrencySymbol] = useState("₦")
+  const { accounts: investmentAccounts } = useInvestments()
+  // Amounts are recorded in the user's chosen currency
+  const currencySymbolText = currencySymbol()
 
   const [type, setType] = useState<"income" | "expense" | "investment">("expense")
   const [amount, setAmount] = useState("")
@@ -83,20 +82,6 @@ export function AddTransactionDialog({
   const [investmentTokenId, setInvestmentTokenId] = useState("")
 
   const [errors, setErrors] = useState<Record<string, string>>({})
-
-  // Fetch currency symbol from user settings
-  useEffect(() => {
-    if (open) {
-      const fetchSettings = async () => {
-        const profile = await loadProfile()
-        if (profile?.currency) {
-          const symbol = getCurrencySymbol(profile.currency as any) || "₦"
-          setCurrencySymbol(symbol)
-        }
-      }
-      fetchSettings()
-    }
-  }, [open])
 
   // Sync state with selected transaction or defaults
   useEffect(() => {
@@ -127,8 +112,6 @@ export function AddTransactionDialog({
       setInvestmentAccountId(defaults?.investmentAccountId || "")
       setInvestmentTokenId(defaults?.investmentTokenId || "")
     }
-    // Pick up cards created since this dialog was mounted
-    if (open) refreshInvestments()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, transaction])
 
@@ -398,7 +381,7 @@ export function AddTransactionDialog({
           <div className="grid gap-2">
             <Label htmlFor="amount">Amount</Label>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-muted-foreground">{currencySymbol}</span>
+              <span className="absolute left-3 top-2.5 text-muted-foreground">{currencySymbolText}</span>
               <Input
                 id="amount"
                 type="number"
@@ -406,7 +389,8 @@ export function AddTransactionDialog({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
-                className={cn("pl-7", errors.amount && "border-destructive")}
+                style={symbolInputPadding()}
+                className={cn(errors.amount && "border-destructive")}
               />
             </div>
             {errors.amount && <span className="text-xs text-destructive">{errors.amount}</span>}

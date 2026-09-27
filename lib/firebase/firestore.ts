@@ -184,6 +184,20 @@ export const deleteTransaction = async (transactionId: string) => {
 
 // Categories
 
+// Category documents only. Spending is computed from the already-loaded transactions
+// (see FinanceDataProvider) instead of fetching every transaction again.
+export const getCategoryDocs = async (userId: string) => {
+  try {
+    const q = query(collection(db!, "categories"), where("userId", "==", userId), orderBy("createdAt", "desc"))
+    const querySnapshot = await getDocs(q)
+    return {
+      data: querySnapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Category),
+      error: null,
+    }
+  } catch (error: any) {
+    return { data: [] as Category[], error: error.message as string }
+  }
+}
 
 export const getCategories = async (userId: string) => {
   try {
@@ -573,11 +587,8 @@ export const calculateCategorySpent = async (userId: string, categoryId: string)
 export const getRecurringExpenses = async (userId: string) => {
   try {
     const recurringRef = collection(db, "recurringExpenses")
-    const q = query(
-      recurringRef,
-      where("userId", "==", userId),
-      orderBy("nextDue", "asc")
-    )
+    // No orderBy: userId + nextDue ordering needs a composite index; callers sort by due date themselves
+    const q = query(recurringRef, where("userId", "==", userId))
     const querySnapshot = await getDocs(q)
     const expenses: RecurringExpense[] = []
     querySnapshot.forEach((doc) => {
@@ -585,6 +596,7 @@ export const getRecurringExpenses = async (userId: string) => {
     })
     return { data: expenses, error: null }
   } catch (error: any) {
+    console.error("Failed to load recurring expenses:", error?.code, error?.message)
     return { data: [], error: error.message }
   }
 }

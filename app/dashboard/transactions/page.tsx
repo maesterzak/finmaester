@@ -10,7 +10,7 @@ export default function TransactionsPage() {
     <div className="container mx-auto p-4 md:p-6 ">
       <DashboardHeader
         title="Transactions"
-        description="Manage your income and expenses"
+        description="Everything you've earned, spent and invested"
         action={<AddTransactionButton onClick={() => setTriggerAdd(prev => prev + 1)} />}
       />
       {/* TransactionList reads its filters from the URL (useSearchParams), which needs a Suspense boundary */}

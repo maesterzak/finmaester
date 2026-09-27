@@ -49,7 +49,7 @@ export function PeriodSummary({ current, previous, previousLabel }: PeriodSummar
   ]
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {tiles.map((tile) => (
         <div key={tile.label} className="text-center sm:text-left min-w-0">
           <p className="text-sm text-muted-foreground">{tile.label}</p>

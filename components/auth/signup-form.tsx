@@ -50,7 +50,7 @@ export function SignUpForm() {
     setIsLoading(false)
 
     if (result.success) {
-      toastSuccess("Welcome to FinMaester! Please verify your email.")
+      toastSuccess("Welcome to FinMaester! We sent you an email to verify your address.")
       router.push("/dashboard")
     } else {
       toastError(result.error || "Failed to create account")
@@ -133,7 +133,7 @@ export function SignUpForm() {
                   <Input
                     id="name"
                     name="name"
-                    placeholder="John Doe"
+                    placeholder="Your name"
                     type="text"
                     autoCapitalize="none"
                     autoCorrect="off"
@@ -186,7 +186,7 @@ export function SignUpForm() {
                       <Input
                         id="name-phone"
                         name="name"
-                        placeholder="John Doe"
+                        placeholder="Your name"
                         type="text"
                         autoCapitalize="none"
                         autoCorrect="off"
@@ -203,7 +203,7 @@ export function SignUpForm() {
                       <Input
                         id="phone"
                         name="phone"
-                        placeholder="+1 (555) 000-0000"
+                        placeholder="Include country code, e.g. +1 555 010 0000"
                         type="tel"
                         autoCapitalize="none"
                         autoComplete="tel"

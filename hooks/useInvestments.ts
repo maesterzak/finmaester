@@ -1,14 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
+import { useFinanceResource } from "@/contexts/FinanceDataContext"
 import {
   type InvestmentAccount,
-  type InvestmentData,
   type InvestmentToken,
   deleteInvestmentAccount,
   deleteInvestmentToken,
-  getInvestmentData,
   newInvestmentId,
   saveInvestmentAccount,
   setInvestmentTarget,
@@ -19,27 +17,8 @@ export type InvestmentAccountInput = Omit<InvestmentAccount, "id" | "tokens" | "
 
 export function useInvestments() {
   const { user } = useAuth()
-  const [data, setData] = useState<InvestmentData>({ accounts: [], targets: {} })
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    if (user) {
-      load()
-    } else {
-      setData({ accounts: [], targets: {} })
-      setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
-
-  const load = async () => {
-    if (!user) return
-    setLoading(true)
-    const { data, error } = await getInvestmentData(user.uid)
-    if (error) toastError("Failed to load investments")
-    else setData(data)
-    setLoading(false)
-  }
+  // Shared with every other page through FinanceDataProvider
+  const { data, loading, reload: load } = useFinanceResource("investments")
 
   const run = async (action: Promise<{ success: boolean; error: string | null }>, ok: string, fail: string) => {
     const { success } = await action

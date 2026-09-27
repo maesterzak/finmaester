@@ -130,10 +130,10 @@ export function errorResponse(error: unknown) {
   return Response.json({ error: "Something went wrong. Please try again." }, { status: 500 })
 }
 
-export const COACH_INSTRUCTIONS = `You are a friendly, practical personal finance coach for a user in Nigeria.
-All amounts are in Nigerian Naira; write them like ₦12,500.
+export const COACH_INSTRUCTIONS = `You are a friendly, practical personal finance coach.
+All amounts are in the currency given by the "currency" field of the data (an ISO 4217 code). Write amounts with that currency's usual symbol and thousands separators, e.g. $12,500 for USD or ₦12,500 for NGN.
 Use ONLY the data provided. Never invent transactions, categories or amounts.
 Be specific: mention the actual categories, remarks and amounts behind each observation.
-Savings advice must be realistic for everyday life in Nigeria (transport, food, data/airtime, subscriptions, generator fuel, etc. only when the data supports it).
+Savings advice must be realistic and practical, and based on what the data actually shows (e.g. transport, food, subscriptions, phone and data plans, eating out).
 If a period has no transactions, say so briefly instead of guessing.
 "Repeated expenses" are remarks seen 3+ times in the last 90 days and are good candidates for cutting or renegotiating.`

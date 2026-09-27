@@ -1,318 +1,86 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowDownIcon, ArrowUpIcon, DollarSign, CalendarDays, TrendingUp } from 'lucide-react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useMemo, useState } from "react"
+import Link from "next/link"
+import { ArrowRight } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { PeriodSummary } from "@/components/analytics/period-summary"
 import { useTransactions } from "@/hooks/useTransactions"
-import { calculateSummaryByPeriod } from "@/lib/calculations"
+import { filterByRange, summarize } from "@/lib/analytics"
 import { formatCurrency } from "@/lib/formatCurrency"
-import { getInvestmentsSummary } from "@/lib/firebase/firestore"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import {
+  type PeriodType,
+  formatPeriodLabel,
+  getPeriodRange,
+  getPreviousRange,
+  previousPeriodLabel,
+} from "@/lib/periods"
 
-const months = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
+type SummaryPeriod = Exclude<PeriodType, "custom">
+
+const PERIODS: { value: SummaryPeriod; label: string }[] = [
+  { value: "day", label: "Today" },
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+  { value: "year", label: "This year" },
 ]
+
+// Uses the same Sunday-start periods as the Transactions and Analytics pages
 export function FinanceSummary() {
   const { transactions, loading } = useTransactions()
-  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("monthly")
-  const [activeTab, setActiveTab] = useState("monthly")
-  const currentDate = new Date()
-  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth())
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
+  const [period, setPeriod] = useState<SummaryPeriod>("month")
 
-  // Generate year options
-  const yearOptions = Array.from({ length: 4 }, (_, i) => currentDate.getFullYear() - 2 + i)
-
-  const summaryData = useMemo(() => {
-    if (loading || transactions.length === 0) {
-      return { income: 0, expenses: 0, balance: 0, invested: 0 }
+  const { range, current, previous } = useMemo(() => {
+    const range = getPeriodRange(period, new Date())
+    return {
+      range,
+      current: summarize(filterByRange(transactions, range)),
+      previous: summarize(filterByRange(transactions, getPreviousRange(period, range))),
     }
-    return calculateSummaryByPeriod(transactions, period)
-  }, [transactions, period, loading])
-
-  const dailySummary = useMemo(() => calculateSummaryByPeriod(transactions, "daily"), [transactions])
-  const weeklySummary = useMemo(() => calculateSummaryByPeriod(transactions, "weekly"), [transactions])
-  const monthlySummary = useMemo(() => calculateSummaryByPeriod(transactions, "monthly", `${selectedYear}-${(selectedMonth + 1).toString().padStart(2, "0")}`), [transactions, selectedMonth, selectedYear])
-  const yearlySummary = useMemo(() => calculateSummaryByPeriod(transactions, "yearly"), [transactions])
+  }, [transactions, period])
 
   return (
-    <div>
-      <Tabs defaultValue="monthly" onValueChange={(v) => setPeriod(v as any)} className="w-full">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <h2 className="text-2xl font-bold text-foreground">Financial Summary</h2>
-          <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full sm:w-auto">
-            <TabsTrigger value="daily">Daily</TabsTrigger>
-            <TabsTrigger value="weekly">Weekly</TabsTrigger>
-            <TabsTrigger value="monthly">Monthly</TabsTrigger>
-            <TabsTrigger value="yearly">Yearly</TabsTrigger>
-          </TabsList>
+    <Card className="border-border/50">
+      <CardHeader className="pb-4">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="text-xl">Financial Summary</CardTitle>
+            <CardDescription>{formatPeriodLabel(period, range)}</CardDescription>
+          </div>
+          <Tabs value={period} onValueChange={(v) => setPeriod(v as SummaryPeriod)}>
+            <TabsList className="grid w-full grid-cols-4 xl:w-auto">
+              {PERIODS.map((p) => (
+                <TabsTrigger key={p.value} value={p.value} className="text-xs sm:text-sm px-1.5 sm:px-3">
+                  {p.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
         </div>
-
-        {period === "monthly" && (
-          <Card className="mb-6 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
-            <CardContent className="p-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <CalendarDays className="h-5 w-5 text-primary" />
-                  <span className="font-medium text-foreground">Viewing data for</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Select value={selectedMonth.toString()} onValueChange={(v) => setSelectedMonth(Number.parseInt(v))}>
-                    <SelectTrigger className="w-[140px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {months.map((month, index) => (
-                        <SelectItem key={month} value={index.toString()}>
-                          {month}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(Number.parseInt(v))}>
-                    <SelectTrigger className="w-[100px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {yearOptions.map((year) => (
-                        <SelectItem key={year} value={year.toString()}>
-                          {year}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        <TabsContent value="daily" className="space-y-4 animate-fade-in">
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard
-              title="Income"
-              amount={formatCurrency(dailySummary.income)}
-              change=""
-              isPositive={true}
-              icon={DollarSign}
-            />
-            <SummaryCard
-              title="Expenses"
-              amount={formatCurrency(dailySummary.expenses)}
-              change=""
-              isPositive={false}
-              icon={DollarSign}
-            />
-            <SummaryCard
-              title="Invested"
-              amount={formatCurrency(dailySummary.invested)}
-              change=""
-              isPositive={true}
-              icon={TrendingUp}
-            />
-            <SummaryCard
-              title="Balance"
-              amount={formatCurrency(dailySummary.balance)}
-              change=""
-              isPositive={dailySummary.balance >= 0}
-              icon={DollarSign}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="weekly" className="space-y-4 animate-fade-in">
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard
-              title="Income"
-              amount={formatCurrency(weeklySummary.income)}
-              change=""
-              isPositive={true}
-              icon={DollarSign}
-            />
-            <SummaryCard
-              title="Expenses"
-              amount={formatCurrency(weeklySummary.expenses)}
-              change=""
-              isPositive={false}
-              icon={DollarSign}
-            />
-            <SummaryCard
-              title="Invested"
-              amount={formatCurrency(weeklySummary.invested)}
-              change=""
-              isPositive={true}
-              icon={TrendingUp}
-            />
-            <SummaryCard
-              title="Balance"
-              amount={formatCurrency(weeklySummary.balance)}
-              change=""
-              isPositive={weeklySummary.balance >= 0}
-              icon={DollarSign}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="monthly" className="space-y-4 animate-fade-in">
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard
-              title="Income"
-              amount={formatCurrency(monthlySummary.income)}
-              change=""
-              isPositive={true}
-              icon={DollarSign}
-            />
-            <SummaryCard
-              title="Expenses"
-              amount={formatCurrency(monthlySummary.expenses)}
-              change=""
-              isPositive={false}
-              icon={DollarSign}
-            />
-            <SummaryCard
-              title="Invested"
-              amount={formatCurrency(monthlySummary.invested)}
-              change=""
-              isPositive={true}
-              icon={TrendingUp}
-            />
-            <SummaryCard
-              title="Balance"
-              amount={formatCurrency(monthlySummary.balance)}
-              change=""
-              isPositive={monthlySummary.balance >= 0}
-              icon={DollarSign}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="yearly" className="space-y-4 animate-fade-in">
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard
-              title="Income"
-              amount={formatCurrency(yearlySummary.income)}
-              change=""
-              isPositive={true}
-              icon={DollarSign}
-            />
-            <SummaryCard
-              title="Expenses"
-              amount={formatCurrency(yearlySummary.expenses)}
-              change=""
-              isPositive={false}
-              icon={DollarSign}
-            />
-            <SummaryCard
-              title="Invested"
-              amount={formatCurrency(yearlySummary.invested)}
-              change=""
-              isPositive={true}
-              icon={TrendingUp}
-            />
-            <SummaryCard
-              title="Balance"
-              amount={formatCurrency(yearlySummary.balance)}
-              change=""
-              isPositive={yearlySummary.balance >= 0}
-              icon={DollarSign}
-            />
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Investments Trend Chart */}
-      {!loading && transactions.some(t => t.type === 'investment') && (
-        <Card className="mt-6 border-border/50 backdrop-blur-sm bg-card/80">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" /> Investment Analytics (Last 12 Months)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <p className="text-sm text-muted-foreground mb-4">Monthly Contribution Trend</p>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={getInvestmentsSummary(transactions).monthlyInvested}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(20, 8%, 20%)" />
-                  <XAxis dataKey="name" stroke="hsl(0, 0%, 70%)" style={{ fontSize: "12px" }} />
-                  <YAxis stroke="hsl(0, 0%, 70%)" style={{ fontSize: "12px" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(15, 20%, 12%)",
-                      border: "1px solid hsl(20, 8%, 20%)",
-                      borderRadius: "0.5rem",
-                    }}
-                    formatter={(value) => formatCurrency(Number(value))}
-                  />
-                  <Bar dataKey="invested" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground mb-4">Asset Allocation</p>
-              <div className="space-y-3">
-                {Object.entries(getInvestmentsSummary(transactions).assetBreakdown).map(([asset, amount]) => (
-                  <div key={asset} className="flex justify-between items-center p-3 rounded-lg border hover:bg-accent/50 transition-colors">
-                    <span className="font-medium">{asset}</span>
-                    <span className="font-semibold text-primary">{formatCurrency(amount)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-function SummaryCard({
-  title,
-  amount,
-  change,
-  isPositive,
-  icon: Icon,
-}: {
-  title: string
-  amount: string
-  change: string
-  isPositive: boolean
-  icon: any
-}) {
-  return (
-    <Card className="card-hover border-border/50 backdrop-blur-sm bg-card/80">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <Icon className="h-5 w-5 text-primary/60" />
       </CardHeader>
-      <CardContent className="space-y-2">
-        <div className="text-3xl font-bold tracking-tight text-foreground">{amount}</div>
-        {change && (
-          <p className="text-xs flex items-center gap-1">
-            {isPositive ? (
-              <ArrowUpIcon className="h-4 w-4 text-emerald-500" />
-            ) : (
-              <ArrowDownIcon className="h-4 w-4 text-red-500" />
-            )}
-            <span className={isPositive ? "text-emerald-500 font-semibold" : "text-red-500 font-semibold"}>
-              {change}
-            </span>
-            <span className="text-muted-foreground">from last period</span>
-          </p>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-16" />
+            ))}
+          </div>
+        ) : (
+          <PeriodSummary current={current} previous={previous} previousLabel={previousPeriodLabel[period]} />
         )}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-3">
+          <p className="text-sm text-muted-foreground">
+            Invested: <span className="font-semibold text-blue-500">{formatCurrency(current.invested)}</span>
+          </p>
+          <Button asChild variant="ghost" size="sm" className="gap-1 -mr-2">
+            <Link href={`/dashboard/transactions?period=${period}`}>
+              See transactions <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )

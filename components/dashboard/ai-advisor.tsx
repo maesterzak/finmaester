@@ -26,12 +26,12 @@ import { useTransactions } from "@/hooks/useTransactions"
 import { useCategories } from "@/hooks/useCategories"
 import { buildSpendingContext } from "@/lib/ai/context"
 import type { ChatMessage, SpendingAnalysis } from "@/lib/ai/types"
-import { formatCurrency } from "@/lib/formatCurrency"
+import { formatCurrency, getActiveCurrency } from "@/lib/formatCurrency"
 import { toDateKey } from "@/lib/periods"
 import { cn } from "@/lib/utils"
 
 const SUGGESTED_QUESTIONS = [
-  "Where can I save ₦10,000 this month?",
+  "Where can I save money this month?",
   "Which expenses keep repeating?",
   "Am I spending more than last month?",
 ]
@@ -84,7 +84,7 @@ export function AiAdvisor() {
   // Changes whenever the underlying data does, so a cached analysis is never stale
   const fingerprint = useMemo(
     () =>
-      `${toDateKey(new Date())}:${transactions.length}:${transactions.reduce((s, t) => s + (Number(t.amount) || 0), 0)}`,
+      `${getActiveCurrency()}:${toDateKey(new Date())}:${transactions.length}:${transactions.reduce((s, t) => s + (Number(t.amount) || 0), 0)}`,
     [transactions],
   )
   const cacheKey = user ? `ai-analysis:${user.uid}` : null

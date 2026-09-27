@@ -31,7 +31,16 @@ import {
   Copy,
   List,
 } from "lucide-react"
-import { Progress } from "@/components/ui/progress"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { AddCategoryDialog } from "@/components/categories/add-category-dialog"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
@@ -39,7 +48,7 @@ import { useCategories } from "@/hooks/useCategories"
 import { useTransactions } from "@/hooks/useTransactions"
 import { CategoryTransactionsSheet } from "@/components/categories/category-transactions-sheet"
 import { getCategoryIcon } from "@/lib/category-icons"
-import { formatCurrency, formatCurrencyNoDecimals } from "@/lib/formatCurrency"
+import { currencySymbol, formatCurrency, formatCurrencyNoDecimals, symbolInputPadding } from "@/lib/formatCurrency"
 import type { Category } from "@/lib/firebase/firestore"
 
 interface CategoryListProps {
@@ -144,6 +153,7 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
     useCategories()
   const transactionsState = useTransactions()
   const [viewingCategory, setViewingCategory] = useState<Category | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<Category | null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<any>(null)
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false)
@@ -349,7 +359,7 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
-                        onClick={() => handleDeleteCategory(category?.id)}
+                        onClick={() => setPendingDelete(category)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
@@ -422,13 +432,15 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                     </div>
 
                     <div className="space-y-1.5">
-                      <Progress
-                        value={percentage}
-                        className="h-2"
-                        indicatorClassName={cn(
-                          isOverBudget ? "bg-red-500" : percentage >= 75 ? "bg-amber-500" : "bg-emerald-500",
-                        )}
-                      />
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all",
+                            isOverBudget ? "bg-red-500" : percentage >= 75 ? "bg-amber-500" : "bg-emerald-500",
+                          )}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
                       <div className="flex justify-between items-center text-xs">
                         <span className={cn("font-medium", budgetStatus.color)}>{Math.round(percentage)}% used</span>
                         <span className="text-muted-foreground">
@@ -460,7 +472,7 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
               Budget Amount
             </Label>
             <div className="relative mt-2">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₦</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{currencySymbol()}</span>
               <Input
                 id="budget-amount"
                 type="number"
@@ -469,7 +481,7 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                 placeholder="0.00"
                 min="0"
                 step="0.01"
-                className="pl-9"
+                style={symbolInputPadding()}
               />
             </div>
             <p className="text-xs text-muted-foreground mt-2">Enter 0 to clear the budget for this month.</p>
@@ -508,6 +520,27 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {pendingDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The category and its budgets will be removed. Your transactions are kept; they&apos;ll show under
+              &ldquo;{pendingDelete?.name}&rdquo; by name but no longer count toward a category budget.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => pendingDelete?.id && handleDeleteCategory(pendingDelete.id)}
+            >
+              Delete category
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <CategoryTransactionsSheet
         category={viewingCategory}

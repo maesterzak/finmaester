@@ -19,7 +19,7 @@ import {
 import type { InvestmentAccountInput } from "@/hooks/useInvestments"
 import type { InvestmentAccount, InvestmentType } from "@/lib/firebase/investments"
 import { INVESTMENT_COLORS, INVESTMENT_TYPES } from "@/lib/investments"
-import { formatCurrency } from "@/lib/formatCurrency"
+import { currencySymbol, formatCurrency, symbolInputPadding } from "@/lib/formatCurrency"
 import { monthKeyOf } from "@/lib/periods"
 import { cn } from "@/lib/utils"
 
@@ -30,7 +30,7 @@ const parseAmount = (value: string) => {
   return Number.isFinite(n) ? n : null
 }
 
-function NairaInput({
+function MoneyInput({
   id,
   value,
   onChange,
@@ -45,7 +45,7 @@ function NairaInput({
 }) {
   return (
     <div className="relative">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₦</span>
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">{currencySymbol()}</span>
       <Input
         id={id}
         type="number"
@@ -55,7 +55,8 @@ function NairaInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={cn("pl-7", invalid && "border-destructive")}
+        style={symbolInputPadding()}
+        className={cn(invalid && "border-destructive")}
       />
     </div>
   )
@@ -172,7 +173,7 @@ export function InvestmentAccountDialog({
 
           <div className="grid gap-2">
             <Label htmlFor="inv-allocation">Monthly plan (optional)</Label>
-            <NairaInput id="inv-allocation" value={allocation} onChange={setAllocation} placeholder="e.g. 300000" />
+            <MoneyInput id="inv-allocation" value={allocation} onChange={setAllocation} placeholder="e.g. 300000" />
             <span className="text-xs text-muted-foreground">
               How much of your monthly target you plan to put here.
             </span>
@@ -340,7 +341,7 @@ export function CurrentValueDialog({
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="current-value">Current value</Label>
-            <NairaInput id="current-value" value={value} onChange={setValue} placeholder="e.g. 1250000" />
+            <MoneyInput id="current-value" value={value} onChange={setValue} placeholder="e.g. 1250000" />
             {parsed !== null && invested > 0 && (
               <span className={cn("text-xs", parsed >= invested ? "text-emerald-500" : "text-red-500")}>
                 {parsed >= invested ? "Gain" : "Loss"} of {formatCurrency(Math.abs(parsed - invested))} (
@@ -383,7 +384,7 @@ export function TargetDialog({
 
   useEffect(() => {
     if (open) {
-      setAmount(String(currentTarget ?? 500000))
+      setAmount(currentTarget ? String(currentTarget) : "")
       setFromMonth(thisMonth)
     }
   }, [open, currentTarget, thisMonth])
@@ -410,7 +411,7 @@ export function TargetDialog({
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="target-amount">Target per month</Label>
-            <NairaInput id="target-amount" value={amount} onChange={setAmount} invalid={parsed === null} />
+            <MoneyInput id="target-amount" value={amount} onChange={setAmount} placeholder="How much per month?" invalid={amount !== "" && parsed === null} />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="target-from">Starting from</Label>

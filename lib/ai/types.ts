@@ -20,7 +20,8 @@ export interface PeriodSnapshot {
 }
 
 export interface SpendingContext {
-  currency: "NGN"
+  // ISO 4217 code of the currency all amounts are in, e.g. "USD"
+  currency: string
   today: string
   weekStartsOn: "Sunday"
   periods: { day: PeriodSnapshot; week: PeriodSnapshot; month: PeriodSnapshot }

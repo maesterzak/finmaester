@@ -1,5 +1,10 @@
 "use client"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+
+import { useMemo } from "react"
+import Link from "next/link"
+import { addDays, endOfMonth, format, startOfMonth, subMonths } from "date-fns"
+import { BarChart3 } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Area,
@@ -16,152 +21,176 @@ import {
   XAxis,
   YAxis,
 } from "@/components/ui/chart"
-import { getExpensesLast30Days, getIncomeVsExpenseLast12Months } from "@/lib/firebase/firestore"
+import {
+  EXPENSE_COLOR,
+  INCOME_COLOR,
+  chartAxisProps,
+  chartGridProps,
+  chartTooltipProps,
+} from "@/components/analytics/chart-theme"
+import type { Category, Transaction } from "@/lib/firebase/firestore"
+import { buildTimeSeries, categoryBreakdown, filterByRange, onlyExpenses } from "@/lib/analytics"
+import { formatCurrency, formatCurrencyCompact } from "@/lib/formatCurrency"
+import { getPeriodRange, toDateKey } from "@/lib/periods"
 
-export function ExpenseCharts({transactions}: {transactions:any[]}) {
-  // Mock data - in a real app, this would come from your API
-  const monthlyData = getIncomeVsExpenseLast12Months(transactions)
-  
+function EmptyChart({ message }: { message: string }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center text-center">
+      <BarChart3 className="h-10 w-10 text-muted-foreground/50 mb-2" />
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </div>
+  )
+}
 
-  const categoryData = [
-    { name: "Investment", value: 25, color: "#8884d8" },
-    { name: "Savings", value: 15, color: "#82ca9d" },
-    { name: "Transport", value: 20, color: "#ffc658" },
-    { name: "Education", value: 15, color: "#ff8042" },
-    { name: "Personal", value: 25, color: "#0088fe" },
-  ]
+export function ExpenseCharts({ transactions, categories }: { transactions: Transaction[]; categories: Category[] }) {
+  const todayKey = toDateKey(new Date())
 
- 
+  const { monthly, daily, slices, monthLabel } = useMemo(() => {
+    const now = new Date()
+    const yearRange = { start: toDateKey(startOfMonth(subMonths(now, 11))), end: toDateKey(endOfMonth(now)) }
+    const last30 = { start: toDateKey(addDays(now, -29)), end: toDateKey(now) }
+    return {
+      monthly: buildTimeSeries(transactions, "year", yearRange),
+      daily: buildTimeSeries(transactions, "custom", last30),
+      slices: categoryBreakdown(
+        onlyExpenses(filterByRange(transactions, getPeriodRange("month", now))),
+        categories,
+      ).slice(0, 8),
+      monthLabel: format(now, "MMMM"),
+    }
+    // todayKey recomputes the ranges when the day rolls over
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, categories, todayKey])
 
-  const dailyData  = getExpensesLast30Days(transactions)
+  const hasMonthly = monthly.some((m) => m.income > 0 || m.expense > 0)
+  const hasDaily = daily.some((d) => d.expense > 0)
+  const monthTotal = slices.reduce((s, c) => s + c.amount, 0)
 
   return (
-    <Card className="card-hover border-border/50 backdrop-blur-sm bg-card/80 animate-slide-in">
-      <CardHeader className="pb-3 md:pb-6">
-        <CardTitle className="text-xl md:text-2xl font-bold">Expense Analysis</CardTitle>
+    <Card className="border-border/50">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-xl">Spending Trends</CardTitle>
+        <CardDescription>Income, expenses and where your money goes</CardDescription>
       </CardHeader>
-      <CardContent className="pt-2 md:pt-6">
+      <CardContent>
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-4 md:mb-6">
-            <TabsTrigger value="overview" className="text-xs md:text-sm">
-              Overview
+          <TabsList className="grid w-full grid-cols-3 mb-4">
+            <TabsTrigger value="overview" className="text-xs sm:text-sm">
+              12 months
             </TabsTrigger>
-            <TabsTrigger value="categories" className="text-xs md:text-sm">
+            <TabsTrigger value="categories" className="text-xs sm:text-sm">
               Categories
             </TabsTrigger>
-            <TabsTrigger value="daily" className="text-xs md:text-sm">
-              Daily
+            <TabsTrigger value="daily" className="text-xs sm:text-sm">
+              30 days
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="mt-4 animate-fade-in">
-            <div className="h-[300px] md:h-[400px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={monthlyData}
-                  margin={{
-                    top: 10,
-                    right: 30,
-                    left: 0,
-                    bottom: 0,
-                  }}
-                >
-                  <defs>
-                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(156, 100%, 40%)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(156, 100%, 40%)" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(20, 8%, 20%)" />
-                  <XAxis dataKey="name" stroke="hsl(0, 0%, 70%)" style={{ fontSize: "12px" }} />
-                  <YAxis stroke="hsl(0, 0%, 70%)" style={{ fontSize: "12px" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(15, 20%, 12%)",
-                      border: "1px solid hsl(20, 8%, 20%)",
-                      borderRadius: "0.5rem",
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: "12px" }} />
-                  <Area
-                    type="monotone"
-                    dataKey="income"
-                    stroke="hsl(156, 100%, 40%)"
-                    fillOpacity={1}
-                    fill="url(#colorIncome)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="expense"
-                    stroke="hsl(0, 84%, 60%)"
-                    fillOpacity={1}
-                    fill="url(#colorExpenses)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+          <TabsContent value="overview" className="mt-0">
+            <div className="h-[260px] sm:h-[320px] w-full">
+              {hasMonthly ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={monthly} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="trendIncome" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={INCOME_COLOR} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={INCOME_COLOR} stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="trendExpense" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={EXPENSE_COLOR} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={EXPENSE_COLOR} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid {...chartGridProps} />
+                    <XAxis dataKey="label" {...chartAxisProps} minTickGap={4} />
+                    <YAxis {...chartAxisProps} width={56} tickFormatter={(v: number) => formatCurrencyCompact(v)} />
+                    <Tooltip {...chartTooltipProps} formatter={(value: number) => formatCurrency(value)} />
+                    <Legend wrapperStyle={{ fontSize: "12px" }} />
+                    <Area type="monotone" dataKey="income" name="Income" stroke={INCOME_COLOR} fill="url(#trendIncome)" />
+                    <Area
+                      type="monotone"
+                      dataKey="expense"
+                      name="Expenses"
+                      stroke={EXPENSE_COLOR}
+                      fill="url(#trendExpense)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyChart message="No income or expenses in the last 12 months." />
+              )}
             </div>
           </TabsContent>
 
-          <TabsContent value="categories" className="mt-4 animate-fade-in">
-            <div className="h-[300px] md:h-[400px] flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="hsl(156, 100%, 40%)"
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(15, 20%, 12%)",
-                      border: "1px solid hsl(20, 8%, 20%)",
-                      borderRadius: "0.5rem",
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+          <TabsContent value="categories" className="mt-0">
+            {slices.length === 0 ? (
+              <div className="h-[260px]">
+                <EmptyChart message={`No expenses in ${monthLabel} yet.`} />
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-[200px_1fr] items-center">
+                <div className="relative h-[200px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={slices}
+                        dataKey="amount"
+                        nameKey="name"
+                        innerRadius={60}
+                        outerRadius={88}
+                        paddingAngle={slices.length > 1 ? 2 : 0}
+                        stroke="none"
+                      >
+                        {slices.map((s) => (
+                          <Cell key={s.id} fill={s.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip {...chartTooltipProps} formatter={(value: number) => formatCurrency(value)} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <p className="text-[10px] text-muted-foreground">{monthLabel}</p>
+                    <p className="text-sm font-bold">{formatCurrencyCompact(monthTotal)}</p>
+                  </div>
+                </div>
+                <ul className="space-y-2 min-w-0">
+                  {slices.map((s) => (
+                    <li key={s.id} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                        <span className="truncate">{s.name}</span>
+                      </span>
+                      <span className="whitespace-nowrap">
+                        <span className="font-semibold">{formatCurrency(s.amount)}</span>
+                        <span className="text-xs text-muted-foreground"> · {s.share.toFixed(0)}%</span>
+                      </span>
+                    </li>
+                  ))}
+                  <li className="pt-1">
+                    <Link href="/dashboard/analytics" className="text-xs font-medium text-primary hover:underline">
+                      Full breakdown in Analytics →
+                    </Link>
+                  </li>
+                </ul>
+              </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="daily" className="mt-4 animate-fade-in">
-            <div className="h-[300px] md:h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={dailyData}
-                  margin={{
-                    top: 5,
-                    right: 30,
-                    left: 20,
-                    bottom: 5,
-                  }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(20, 8%, 20%)" />
-                  <XAxis dataKey="name" stroke="hsl(0, 0%, 70%)" style={{ fontSize: "12px" }} />
-                  <YAxis stroke="hsl(0, 0%, 70%)" style={{ fontSize: "12px" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(15, 20%, 12%)",
-                      border: "1px solid hsl(20, 8%, 20%)",
-                      borderRadius: "0.5rem",
-                    }}
-                  />
-                  <Bar dataKey="expense" fill="hsl(156, 100%, 40%)" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-              <p className="text-center text-sm">Daily data for past 30 days</p>
+          <TabsContent value="daily" className="mt-0">
+            <div className="h-[260px] sm:h-[320px] w-full">
+              {hasDaily ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={daily} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid {...chartGridProps} />
+                    <XAxis dataKey="label" {...chartAxisProps} minTickGap={16} />
+                    <YAxis {...chartAxisProps} width={56} tickFormatter={(v: number) => formatCurrencyCompact(v)} />
+                    <Tooltip {...chartTooltipProps} formatter={(value: number) => formatCurrency(value)} />
+                    <Bar dataKey="expense" name="Expenses" fill={EXPENSE_COLOR} radius={[4, 4, 0, 0]} maxBarSize={20} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyChart message="No expenses in the last 30 days." />
+              )}
             </div>
           </TabsContent>
         </Tabs>

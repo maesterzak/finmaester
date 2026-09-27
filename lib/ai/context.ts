@@ -21,6 +21,7 @@ import {
   monthKeyOf,
   toDateKey,
 } from "@/lib/periods"
+import { getActiveCurrency } from "@/lib/formatCurrency"
 import type { PeriodSnapshot, SpendingContext } from "./types"
 
 const round = (n: number) => Math.round(n)
@@ -121,7 +122,7 @@ export function buildSpendingContext(
   })
 
   return {
-    currency: "NGN",
+    currency: getActiveCurrency(),
     today: format(today, "EEEE, d MMMM yyyy"),
     weekStartsOn: "Sunday",
     periods: {

@@ -1,51 +1,24 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
+import { useFinanceResource } from "@/contexts/FinanceDataContext"
 import {
-  getCategories,
   addCategory,
   updateCategory,
   deleteCategory,
   setCategoryMonthlyBudget,
   type Category,
-  getTransactions,
 } from "@/lib/firebase/firestore"
 import { toastSuccess, toastError } from "@/lib/toast"
 
+// Reads from the shared FinanceDataProvider; monthly spending is computed from the shared transactions
 export function useCategories() {
   const { user } = useAuth()
-  const [categories, setCategories] = useState<Category[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    if (user) {
-      loadCategories()
-    } else {
-      setCategories([])
-      setLoading(false)
-    }
-  }, [user])
-
-  const loadCategories = async () => {
-    if (!user) return
-
-    setLoading(true)
-    const { data, error } = await getCategories(user.uid)
-console.log("Loaded categories:", data, "Error:", error)
-    if (error) {
-      toastError('Failed to load categories ')
-    } else {
-      setCategories(data)
-    }
-
-    setLoading(false)
-  }
+  const { data: categories, loading, reload } = useFinanceResource("categories")
 
   const handleAddCategory = async (categoryData: Omit<Category, "id" | "userId" | "createdAt" | "updatedAt">) => {
-    if (!user) return
-console.log("Adding category:", categoryData)
-    const { id, error } = await addCategory({
+    if (!user) return false
+    const { error } = await addCategory({
       ...categoryData,
       userId: user.uid,
     })
@@ -53,41 +26,36 @@ console.log("Adding category:", categoryData)
     if (error) {
       toastError("Failed to add category")
       return false
-    } else {
-      toastSuccess("Category added successfully")
-      await loadCategories()
-      return true
     }
+    toastSuccess("Category added successfully")
+    await reload()
+    return true
   }
 
   const handleUpdateCategory = async (categoryId: string, updates: Partial<Category>) => {
-    if (!user) return
-
-    const { success, error } = await updateCategory(categoryId, updates)
+    if (!user) return false
+    const { error } = await updateCategory(categoryId, updates)
 
     if (error) {
       toastError("Failed to update category")
       return false
-    } else {
-      toastSuccess("Category updated successfully")
-      await loadCategories()
-      return true
     }
+    toastSuccess("Category updated successfully")
+    await reload()
+    return true
   }
 
   const handleDeleteCategory = async (categoryId: string) => {
-    if (!user) return
-
-    const { success, error } = await deleteCategory(categoryId)
+    if (!user) return false
+    const { error } = await deleteCategory(categoryId)
 
     if (error) {
       toastError("Failed to delete category")
       return false
-    } else {
-      toastSuccess("Category deleted successfully")
-      await loadCategories()
-      return true
     }
+    toastSuccess("Category deleted successfully")
+    await reload()
+    return true
   }
 
   // Writes only the given month's budget for each category; returns how many succeeded
@@ -101,7 +69,7 @@ console.log("Adding category:", categoryData)
     if (succeeded < budgets.length) {
       toastError(`Failed to update ${budgets.length - succeeded} budget(s)`)
     }
-    await loadCategories()
+    await reload()
     return succeeded
   }
 
@@ -112,7 +80,6 @@ console.log("Adding category:", categoryData)
     updateCategory: handleUpdateCategory,
     deleteCategory: handleDeleteCategory,
     setMonthlyBudgets: handleSetMonthlyBudgets,
-    refreshCategories: loadCategories,
+    refreshCategories: reload,
   }
 }
-

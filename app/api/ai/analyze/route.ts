@@ -40,7 +40,7 @@ const analysisSchema = {
           title: { type: "STRING" },
           detail: { type: "STRING", description: "What to do and why, referencing the data" },
           category: { type: "STRING", description: "Related category, or General" },
-          estimatedMonthlySavings: { type: "NUMBER", description: "Realistic monthly saving in Naira, 0 if unknown" },
+          estimatedMonthlySavings: { type: "NUMBER", description: "Realistic monthly saving in the user's currency, 0 if unknown" },
         },
         required: ["title", "detail", "category", "estimatedMonthlySavings"],
       },

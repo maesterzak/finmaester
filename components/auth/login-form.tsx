@@ -173,7 +173,7 @@ export function LoginForm() {
                       <Input
                         id="phone"
                         name="phone"
-                        placeholder="+1 (555) 000-0000"
+                        placeholder="Include country code, e.g. +1 555 010 0000"
                         type="tel"
                         autoCapitalize="none"
                         autoComplete="tel"
