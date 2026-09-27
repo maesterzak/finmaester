@@ -7,6 +7,7 @@ import {
   addCategory,
   updateCategory,
   deleteCategory,
+  setCategoryMonthlyBudget,
   type Category,
   getTransactions,
 } from "@/lib/firebase/firestore"
@@ -89,12 +90,28 @@ console.log("Adding category:", categoryData)
     }
   }
 
+  // Writes only the given month's budget for each category; returns how many succeeded
+  const handleSetMonthlyBudgets = async (monthKey: string, budgets: { categoryId: string; amount: number }[]) => {
+    if (!user) return 0
+
+    const results = await Promise.all(
+      budgets.map(({ categoryId, amount }) => setCategoryMonthlyBudget(categoryId, monthKey, amount)),
+    )
+    const succeeded = results.filter((r) => r.success).length
+    if (succeeded < budgets.length) {
+      toastError(`Failed to update ${budgets.length - succeeded} budget(s)`)
+    }
+    await loadCategories()
+    return succeeded
+  }
+
   return {
     categories,
     loading,
     addCategory: handleAddCategory,
     updateCategory: handleUpdateCategory,
     deleteCategory: handleDeleteCategory,
+    setMonthlyBudgets: handleSetMonthlyBudgets,
     refreshCategories: loadCategories,
   }
 }

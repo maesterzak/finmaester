@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { ModeToggle } from "@/components/mode-toggle"
-import { BarChart3, Home, PlusCircle, Settings, Share2, LogOut, User, Layers } from "lucide-react"
+import { BarChart3, Home, PlusCircle, Settings, Share2, LogOut, User, Layers, PiggyBank } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { Logo } from "../logo"
 
@@ -84,6 +84,18 @@ export function DashboardSidebar() {
             icon={Layers}
             label="Categories"
             isActive={pathname === "/dashboard/categories"}
+          />
+          <MenuItem
+            href="/dashboard/investments"
+            icon={PiggyBank}
+            label="Investments"
+            isActive={pathname === "/dashboard/investments"}
+          />
+          <MenuItem
+            href="/dashboard/analytics"
+            icon={BarChart3}
+            label="Analytics"
+            isActive={pathname === "/dashboard/analytics"}
           />
           <MenuItem
             href="/dashboard/sharing"

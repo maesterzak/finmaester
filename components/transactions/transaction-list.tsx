@@ -1,78 +1,58 @@
 "use client"
 
-import { useEffect, useState,useRef } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { format } from "date-fns"
+import { CalendarDays, Search, SearchX, X } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  BookOpen,
-  Briefcase,
-  CalendarDays,
-  Car,
-  Coffee,
-  Heart,
-  Landmark,
-  MoreHorizontal,
-  MoreVertical,
-  Pencil,
-  Search,
-  ShoppingBag,
-  Trash2,
-} from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AddTransactionDialog } from "@/components/transactions/add-transaction-dialog"
-import { useTransactions } from "@/hooks/useTransactions"
 import { Skeleton } from "@/components/ui/skeleton"
+import { AddTransactionDialog } from "@/components/transactions/add-transaction-dialog"
+import { PeriodFilter } from "@/components/transactions/period-filter"
+import { TransactionActions } from "@/components/transactions/transaction-actions"
+import { TransactionAmount } from "@/components/transactions/transaction-amount"
+import { toTransactionFields } from "@/components/transactions/transaction-fields"
+import { PeriodSummary } from "@/components/analytics/period-summary"
+import { SpendingChart } from "@/components/analytics/spending-chart"
+import { useTransactions } from "@/hooks/useTransactions"
+import { useCategories } from "@/hooks/useCategories"
+import { usePeriodFilter } from "@/hooks/usePeriodFilter"
+import type { Category, Transaction } from "@/lib/firebase/firestore"
+import {
+  type PeriodTotals,
+  UNCATEGORIZED_ID,
+  filterByRange,
+  indexCategories,
+  matchesRemark,
+  normalizeSearchText,
+  resolveCategory,
+  summarize,
+} from "@/lib/analytics"
+import { getCategoryIcon } from "@/lib/category-icons"
 import { formatCurrency } from "@/lib/formatCurrency"
-
-// Icon mapping for categories
-const iconMap: Record<string, any> = {
-  Briefcase: Briefcase,
-  Wallet: ShoppingBag,
-  Car: Car,
-  BookOpen: BookOpen,
-  Heart: Heart,
-  ShoppingBag: ShoppingBag,
-  Landmark: Landmark,
-  Coffee: Coffee,
-  Home: ShoppingBag,
-}
+import { fromDateKey, previousPeriodLabel } from "@/lib/periods"
+import { cn } from "@/lib/utils"
 
 interface TransactionListProps {
   triggerAdd?: number
 }
 
-const months = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-]
+type SearchScope = "period" | "all"
+
+const INVESTMENT_CATEGORY_ID = "investment-cat"
 
 export function TransactionList({ triggerAdd }: TransactionListProps) {
   const { transactions, loading, addTransaction, updateTransaction, deleteTransaction } = useTransactions()
-  const [searchQuery, setSearchQuery] = useState("")
-  const [typeFilter, setTypeFilter] = useState("all")
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [editingTransaction, setEditingTransaction] = useState<any>(null)
+  const { categories } = useCategories()
+  const filter = usePeriodFilter()
+  const { period, range, previousRange, label, categoryId, setCategoryId } = filter
 
-  const currentDate = new Date()
-  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth())
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchScope, setSearchScope] = useState<SearchScope>("period")
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
 
   useEffect(() => {
     if (triggerAdd && triggerAdd > 0) {
@@ -81,50 +61,54 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
     }
   }, [triggerAdd])
 
+  const categoriesById = useMemo(() => indexCategories(categories), [categories])
 
-  const filteredTransactions = transactions.filter((transaction) => {
-    // Month/Year filter
-    const txDate = new Date(transaction.date)
-    const matchesMonth = txDate.getMonth() === selectedMonth && txDate.getFullYear() === selectedYear
+  const matchesCategory = (tx: Transaction) => {
+    if (categoryId === "all") return true
+    if (categoryId === UNCATEGORIZED_ID) {
+      return tx.categoryId !== INVESTMENT_CATEGORY_ID && (!tx.categoryId || !categoriesById.has(tx.categoryId))
+    }
+    return tx.categoryId === categoryId
+  }
 
-    // Search filter
-    const matchesSearch =
-      transaction.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      transaction.category.toLowerCase().includes(searchQuery.toLowerCase())
+  // Period + category drive the summary; the remark search only narrows the list below it
+  const periodTransactions = useMemo(
+    () => filterByRange(transactions, range).filter(matchesCategory),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [transactions, range, categoryId, categoriesById],
+  )
+  const previousTransactions = useMemo(
+    () => filterByRange(transactions, previousRange).filter(matchesCategory),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [transactions, previousRange, categoryId, categoriesById],
+  )
+  const categoryFilteredTransactions = useMemo(
+    () => transactions.filter(matchesCategory),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [transactions, categoryId, categoriesById],
+  )
 
-    // Type filter
-    const matchesType = typeFilter === "all" || transaction.type === typeFilter
+  const normalizedQuery = normalizeSearchText(searchQuery)
+  const isSearching = normalizedQuery.length > 0
 
-    return matchesMonth && matchesSearch && matchesType
-  })
+  const visibleTransactions = useMemo(() => {
+    if (!normalizedQuery) return periodTransactions
+    const pool = searchScope === "all" ? categoryFilteredTransactions : periodTransactions
+    return pool.filter((tx) => matchesRemark(tx, normalizedQuery))
+  }, [normalizedQuery, searchScope, periodTransactions, categoryFilteredTransactions])
 
-  const monthlyIncome = filteredTransactions
-    .filter((tx) => tx.type === "income")
-    .reduce((sum, tx) => sum + tx.amount, 0)
-  const monthlyExpenses = filteredTransactions
-    .filter((tx) => tx.type === "expense")
-    .reduce((sum, tx) => sum + tx.amount, 0)
-
-  // Generate year options (current year + 2 years back and 1 year forward)
-  const yearOptions = Array.from({ length: 4 }, (_, i) => currentDate.getFullYear() - 2 + i)
-
+  const current = useMemo(() => summarize(periodTransactions), [periodTransactions])
+  const previous = useMemo(() => summarize(previousTransactions), [previousTransactions])
+  const searchTotals = useMemo(() => summarize(visibleTransactions), [visibleTransactions])
 
   const handleAddTransaction = async (newTransaction: any) => {
-    console.log("Adding transaction 3", newTransaction)
-    const success = await addTransaction({
-      type: newTransaction.type,
-      amount: newTransaction.amount,
-      description: newTransaction.description,
-      categoryId: newTransaction.categoryId,
-      categoryName: newTransaction.category,
-      date: newTransaction.date,
-    })
+    const success = await addTransaction(toTransactionFields(newTransaction))
     if (success) {
       setIsAddDialogOpen(false)
     }
   }
 
-  const handleEditTransaction = (transaction: any) => {
+  const handleEditTransaction = (transaction: Transaction) => {
     setEditingTransaction(transaction)
     setIsAddDialogOpen(true)
   }
@@ -132,14 +116,7 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
   const handleUpdateTransaction = async (updatedTransaction: any) => {
     if (!updatedTransaction.id) return
 
-    const success = await updateTransaction(updatedTransaction.id, {
-      type: updatedTransaction.type,
-      amount: updatedTransaction.amount,
-      description: updatedTransaction.description,
-      categoryId: updatedTransaction.categoryId,
-      categoryName: updatedTransaction.category,
-      date: updatedTransaction.date,
-    })
+    const success = await updateTransaction(updatedTransaction.id, toTransactionFields(updatedTransaction))
     if (success) {
       setIsAddDialogOpen(false)
       setEditingTransaction(null)
@@ -150,224 +127,142 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
     await deleteTransaction(id)
   }
 
-  // const filteredTransactions = transactions.filter((transaction) => {
-  //   // Search filter
-  //   const matchesSearch =
-  //     transaction.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-  //     (transaction.categoryName || "").toLowerCase().includes(searchQuery.toLowerCase())
+  const byType = (type?: Transaction["type"]) =>
+    type ? visibleTransactions.filter((tx) => tx.type === type) : visibleTransactions
 
-  //   // Type filter
-  //   const matchesType = typeFilter === "all" || transaction.type === typeFilter
+  const selectedCategoryName =
+    categoryId === "all"
+      ? null
+      : categoryId === UNCATEGORIZED_ID
+        ? "Uncategorized"
+        : categoriesById.get(categoryId)?.name || "Deleted category"
 
-  //   return matchesSearch && matchesType
-  // })
-
-  if (!loading) {
-    return (
-      
-      <div className="space-y-6">
-      <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5 text-primary" />
-              <span className="font-medium text-foreground">Filter by Month</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={selectedMonth.toString()} onValueChange={(v) => setSelectedMonth(Number.parseInt(v))}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map((month, index) => (
-                    <SelectItem key={month} value={index.toString()}>
-                      {month}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(Number.parseInt(v))}>
-                <SelectTrigger className="w-[100px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {yearOptions.map((year) => (
-                    <SelectItem key={year} value={year.toString()}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-border/50">
-            <div className="text-center sm:text-left">
-              <p className="text-sm text-muted-foreground">Income</p>
-              <p className="text-lg font-bold text-emerald-500">+${monthlyIncome.toFixed(2)}</p>
-            </div>
-            <div className="text-center sm:text-left">
-              <p className="text-sm text-muted-foreground">Expenses</p>
-              <p className="text-lg font-bold text-red-500">-${monthlyExpenses.toFixed(2)}</p>
-            </div>
-            <div className="text-center sm:text-left col-span-2 sm:col-span-1">
-              <p className="text-sm text-muted-foreground">Net</p>
-              <p
-                className={`text-lg font-bold ${monthlyIncome - monthlyExpenses >= 0 ? "text-emerald-500" : "text-red-500"}`}
-              >
-                ${(monthlyIncome - monthlyExpenses).toFixed(2)}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <CardTitle>
-                Transactions for {months[selectedMonth]} {selectedYear}
-              </CardTitle>
-              <CardDescription>
-                {filteredTransactions.length} transaction{filteredTransactions.length !== 1 ? "s" : ""} found
-              </CardDescription>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Search transactions..."
-                  className="w-full sm:w-[200px] pl-8"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-full sm:w-[150px]">
-                  <SelectValue placeholder="Filter by type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="income">Income</SelectItem>
-                  <SelectItem value="expense">Expense</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="all" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-4">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="income">Income</TabsTrigger>
-              <TabsTrigger value="expense">Expenses</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="all" className="mt-0 w-full">
-              <TransactionTable
-                transactions={filteredTransactions}
-                onEdit={handleEditTransaction}
-                onDelete={handleDeleteTransaction}
-              />
-            </TabsContent>
-
-            <TabsContent value="income" className="mt-0 w-full">
-              <TransactionTable
-                transactions={filteredTransactions.filter((tx) => tx.type === "income")}
-                onEdit={handleEditTransaction}
-                onDelete={handleDeleteTransaction}
-              />
-            </TabsContent>
-
-            <TabsContent value="expense" className="mt-0 w-full">
-              <TransactionTable
-                transactions={filteredTransactions.filter((tx) => tx.type === "expense")}
-                onEdit={handleEditTransaction}
-                onDelete={handleDeleteTransaction}
-              />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      <AddTransactionDialog
-        open={isAddDialogOpen}
-        onOpenChange={setIsAddDialogOpen}
-        onAdd={handleAddTransaction}
-        onUpdate={handleUpdateTransaction}
-        transaction={editingTransaction}
-      />
-    </div>
-    )
-  }
+  const listTitle = isSearching && searchScope === "all" ? "All time" : label
 
   return (
-    <div className="space-y-6 flex" onClick={()=> setOpenMenuId(null)}>
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <CardTitle>All Transactions</CardTitle>
-              <CardDescription>Manage your income and expenses</CardDescription>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Search transactions..."
-                  className="w-full sm:w-[200px] pl-8"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-full sm:w-[150px]">
-                  <SelectValue placeholder="Filter by type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="income">Income</SelectItem>
-                  <SelectItem value="expense">Expense</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+    <div className="space-y-6">
+      <PeriodFilter filter={filter}>
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-16" />
+            ))}
           </div>
+        ) : (
+          <PeriodSummary current={current} previous={previous} previousLabel={previousPeriodLabel[period]} />
+        )}
+      </PeriodFilter>
+
+      {!loading && (
+        <SpendingChart
+          transactions={categoryFilteredTransactions}
+          period={period}
+          range={range}
+          label={selectedCategoryName ? `${label} · ${selectedCategoryName}` : label}
+        />
+      )}
+
+      <Card>
+        <CardHeader className="space-y-4">
+          <div className="min-w-0">
+            <CardTitle className="break-words">Transactions · {listTitle}</CardTitle>
+            <CardDescription>
+              {loading
+                ? "Loading…"
+                : `${visibleTransactions.length} transaction${visibleTransactions.length !== 1 ? "s" : ""} found`}
+              {selectedCategoryName && ` in ${selectedCategoryName}`}
+            </CardDescription>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+            <div className="relative flex-1 sm:min-w-[240px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="text"
+                inputMode="search"
+                enterKeyHint="search"
+                placeholder='Search remarks, e.g. "Gift to AI"'
+                aria-label="Search transaction remarks"
+                className="pl-8 pr-9"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {isSearching && (
+              <Tabs value={searchScope} onValueChange={(v) => setSearchScope(v as SearchScope)}>
+                <TabsList className="grid w-full grid-cols-2 sm:w-[220px]">
+                  <TabsTrigger value="period" className="text-xs sm:text-sm">
+                    This period
+                  </TabsTrigger>
+                  <TabsTrigger value="all" className="text-xs sm:text-sm">
+                    All time
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
+            <CategorySelect categories={categories} value={categoryId} onChange={setCategoryId} />
+          </div>
+
+          {isSearching && !loading && (
+            <SearchResultsSummary
+              query={searchQuery.trim()}
+              totals={searchTotals}
+              scopeLabel={searchScope === "all" ? "all time" : label}
+              categoryName={selectedCategoryName}
+            />
+          )}
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="all" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-4">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="income">Income</TabsTrigger>
-              <TabsTrigger value="expense">Expenses</TabsTrigger>
-            </TabsList>
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : (
+            <Tabs defaultValue="all" className="w-full">
+              <TabsList className="grid w-full grid-cols-4 mb-4">
+                <TabsTrigger value="all" className="text-xs sm:text-sm px-1">
+                  All
+                </TabsTrigger>
+                <TabsTrigger value="income" className="text-xs sm:text-sm px-1">
+                  Income
+                </TabsTrigger>
+                <TabsTrigger value="expense" className="text-xs sm:text-sm px-1">
+                  Expenses
+                </TabsTrigger>
+                <TabsTrigger value="investment" className="text-xs sm:text-sm px-1">
+                  <span className="sm:hidden">Invest.</span>
+                  <span className="hidden sm:inline">Investments</span>
+                </TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="all" className="mt-0">
-              <TransactionTable
-                transactions={filteredTransactions}
-                onEdit={handleEditTransaction}
-                onDelete={handleDeleteTransaction}
-              />
-            </TabsContent>
-
-            <TabsContent value="income" className="mt-0">
-              <TransactionTable
-                transactions={filteredTransactions.filter((tx) => tx.type === "income")}
-                onEdit={handleEditTransaction}
-                onDelete={handleDeleteTransaction}
-              />
-            </TabsContent>
-
-            <TabsContent value="expense" className="mt-0">
-              <TransactionTable
-                transactions={filteredTransactions.filter((tx) => tx.type === "expense")}
-                onEdit={handleEditTransaction}
-                onDelete={handleDeleteTransaction}
-              />
-            </TabsContent>
-          </Tabs>
+              {([undefined, "income", "expense", "investment"] as const).map((type) => (
+                <TabsContent key={type ?? "all"} value={type ?? "all"} className="mt-0 w-full">
+                  <TransactionTable
+                    transactions={byType(type)}
+                    categoriesById={categoriesById}
+                    highlight={normalizedQuery}
+                    emptyMessage={
+                      isSearching ? `No remarks contain "${searchQuery.trim()}".` : "No transactions found for this period."
+                    }
+                    onEdit={handleEditTransaction}
+                    onDelete={handleDeleteTransaction}
+                  />
+                </TabsContent>
+              ))}
+            </Tabs>
+          )}
         </CardContent>
       </Card>
 
@@ -382,104 +277,212 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
   )
 }
 
+function SearchResultsSummary({
+  query,
+  totals,
+  scopeLabel,
+  categoryName,
+}: {
+  query: string
+  totals: PeriodTotals
+  scopeLabel: string
+  categoryName: string | null
+}) {
+  const total = totals.income + totals.expenses + totals.invested
+  const breakdown = [
+    { label: "Expenses", value: totals.expenses, className: "text-red-500" },
+    { label: "Income", value: totals.income, className: "text-emerald-500" },
+    { label: "Investments", value: totals.invested, className: "text-blue-500" },
+  ].filter((b) => b.value > 0)
+
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 sm:p-4">
+      {totals.count === 0 ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <SearchX className="h-4 w-4 shrink-0" />
+          <span className="break-words min-w-0">
+            No remarks contain &ldquo;{query}&rdquo; in {scopeLabel}
+            {categoryName && ` (${categoryName})`}.
+          </span>
+        </div>
+      ) : (
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm text-muted-foreground break-words">
+              {totals.count} match{totals.count !== 1 ? "es" : ""} for &ldquo;
+              <span className="font-medium text-foreground">{query}</span>&rdquo; in {scopeLabel}
+              {categoryName && ` · ${categoryName}`}
+            </p>
+            <p className="text-2xl font-bold mt-1">{formatCurrency(total)}</p>
+          </div>
+          {breakdown.length > 1 && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {breakdown.map((b) => (
+                <span key={b.label} className="whitespace-nowrap">
+                  <span className="text-muted-foreground">{b.label}: </span>
+                  <span className={cn("font-semibold", b.className)}>{formatCurrency(b.value)}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CategorySelect({
+  categories,
+  value,
+  onChange,
+}: {
+  categories: Category[]
+  value: string
+  onChange: (value: string) => void
+}) {
+  // A category from the URL that no longer exists still needs an option to display
+  const isKnown = value === "all" || value === UNCATEGORIZED_ID || categories.some((c) => c.id === value)
+
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="w-full sm:w-[180px]">
+        <SelectValue placeholder="All categories" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">All categories</SelectItem>
+        {categories.map((cat) => {
+          const Icon = getCategoryIcon(cat.icon)
+          return (
+            <SelectItem key={cat.id} value={cat.id!}>
+              <div className="flex items-center gap-2">
+                <Icon className="h-4 w-4" style={{ color: cat.color }} /> {cat.name}
+              </div>
+            </SelectItem>
+          )
+        })}
+        <SelectItem value={UNCATEGORIZED_ID}>Uncategorized</SelectItem>
+        {!isKnown && <SelectItem value={value}>Deleted category</SelectItem>}
+      </SelectContent>
+    </Select>
+  )
+}
+
+// Wraps every case-insensitive occurrence of `query` in a <mark>
+function Highlight({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>
+  // Match the normalized query while tolerating any run of whitespace in the original text
+  const pattern = query
+    .split(" ")
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+")
+  const parts = text.split(new RegExp(`(${pattern})`, "gi"))
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <mark key={i} className="rounded-sm bg-primary/25 text-foreground px-0.5">
+            {part}
+          </mark>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  )
+}
+
 interface TransactionTableProps {
   transactions: Transaction[]
-  onEdit: (transaction: any) => void
+  categoriesById: Map<string, Category>
+  highlight: string
+  emptyMessage: string
+  onEdit: (transaction: Transaction) => void
   onDelete: (id: string) => void
 }
 
-function TransactionTable({ transactions, onEdit, onDelete,onUpdate }: TransactionTableProps) {
-
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
-   if (transactions.length === 0) {
+function TransactionTable({ transactions, categoriesById, highlight, emptyMessage, onEdit, onDelete }: TransactionTableProps) {
+  if (transactions.length === 0) {
     return (
       <div className="text-center py-10">
         <CalendarDays className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-muted-foreground">No transactions found for this month.</p>
+        <p className="text-muted-foreground break-words">{emptyMessage}</p>
         <p className="text-sm text-muted-foreground/70 mt-1">
-          Try selecting a different month or add a new transaction.
+          Try a different period or category, or add a new transaction.
         </p>
       </div>
     )
   }
-  const getIcon = (categoryIcon?: string) => {
-    if (!categoryIcon) return ShoppingBag
-    return iconMap[categoryIcon] || ShoppingBag
-  }
+
+  const rows = transactions.map((tx) => {
+    const category =
+      tx.type === "investment"
+        ? { name: tx.assetName || "Investment", color: "hsl(217, 91%, 60%)", icon: "Coins" }
+        : resolveCategory(tx.categoryId, tx.categoryName, categoriesById)
+    return { tx, category, Icon: getCategoryIcon(category.icon) }
+  })
 
   return (
-    <div className="relative overflow-x-auto rounded-lg border " onClick={()=>setOpenMenuId(null)}>
-      <table className="min-w-full text-sm text-left">
-        <thead className=" text-gray-400 dark:text-gray-400">
-          <tr>
-            <th className="px-4 py-3 font-medium">Date</th>
-            <th className="px-4 py-3 font-medium">Description</th>
-            <th className="px-4 py-3 font-medium">Category</th>
-            <th className="px-4 py-3 font-medium text-right">Amount</th>
-            <th className="px-4 py-3 w-12"></th>
-          </tr>
-        </thead>
+    <>
+      {/* Phones: stacked list */}
+      <ul className="sm:hidden divide-y divide-border rounded-lg border">
+        {rows.map(({ tx, category, Icon }) => (
+          <li key={tx.id} className="flex items-center gap-3 py-2.5 pl-3 pr-1">
+            <span className="p-2 rounded-lg shrink-0" style={{ backgroundColor: `${category.color}20` }}>
+              <Icon className="h-4 w-4" style={{ color: category.color }} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium break-words">
+                <Highlight text={tx.description || ""} query={highlight} />
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {tx.date ? format(fromDateKey(tx.date), "d MMM yyyy") : "—"} · {category.name}
+              </p>
+            </div>
+            <TransactionAmount transaction={tx} className="text-sm" />
+            <TransactionActions transaction={tx} onEdit={onEdit} onDelete={onDelete} />
+          </li>
+        ))}
+      </ul>
 
-        <tbody className="divide-y dark:divide-gray-800">
-          {transactions.map((tx) => (
-            <tr key={tx.id} className=" hover:bg-accent/50 hover:text-accent-foreground">
-              <td className="px-4 py-3">
-                {new Date(tx.date).toLocaleDateString()}
-              </td>
-
-              <td className="px-4 py-3 font-medium">{tx.description}</td>
-
-              <td className="px-4 py-3 ">
-                {tx.categoryName}
-              </td>
-
-              <td className="px-4 py-3 text-right font-semibold">
-                ₦{tx.amount.toFixed(2)}
-              </td>
-
-              {/* ACTION MENU */}
-              <td className="px-4 py-3 relative">
-                <button
-                  onClick={(e) =>[e.stopPropagation(),
-                    setOpenMenuId(openMenuId === tx.id ? null : tx.id)]
-                  }
-                  className="p-1 rounded  hover:bg-accent/50 hover:text-accent-foreground dark:hover:bg-gray-700"
-                >
-                  <MoreVertical className="w-5 h-5" />
-                </button>
-
-                {openMenuId === tx.id && (
-                  <div
-                    ref={menuRef}
-                    className="absolute right-2 top-10 z-50 w-32 rounded-md border bg-accent text-accent-foreground hover:bg-accent/50 hover:text-accent-foreground shadow-lg"
-                  >
-                    <button
-                      onClick={() => {
-                        onEdit(tx)
-                        setOpenMenuId(null)
-                      }}
-                      className="w-full px-3 py-2 text-left text-sm bg-accent text-accent-foreground rounded-t-md"
-                    >
-                      Update
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        onDelete(tx.id)
-                        setOpenMenuId(null)
-                      }}
-                      className="w-full px-3 py-2 text-left text-sm text-red-600 bg-accent  "
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )}
-              </td>
+      {/* Tablet and up: table */}
+      <div className="hidden sm:block relative overflow-x-auto rounded-lg border">
+        <table className="min-w-full text-sm text-left">
+          <thead className="text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 font-medium">Date</th>
+              <th className="px-4 py-3 font-medium">Description</th>
+              <th className="px-4 py-3 font-medium">Category</th>
+              <th className="px-4 py-3 font-medium text-right">Amount</th>
+              <th className="px-2 py-3 w-12"></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+
+          <tbody className="divide-y divide-border">
+            {rows.map(({ tx, category, Icon }) => (
+              <tr key={tx.id} className="hover:bg-muted/40">
+                <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                  {tx.date ? format(fromDateKey(tx.date), "d MMM yyyy") : "—"}
+                </td>
+                <td className="px-4 py-3 font-medium">
+                  <Highlight text={tx.description || ""} query={highlight} />
+                </td>
+                <td className="px-4 py-3">
+                  <span className="inline-flex items-center gap-2">
+                    <Icon className="h-4 w-4 shrink-0" style={{ color: category.color }} />
+                    {category.name}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <TransactionAmount transaction={tx} />
+                </td>
+                <td className="px-2 py-3">
+                  <TransactionActions transaction={tx} onEdit={onEdit} onDelete={onDelete} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }

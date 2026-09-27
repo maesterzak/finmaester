@@ -29,12 +29,18 @@ import {
   FolderOpen,
   DollarSign,
   Copy,
+  List,
 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { AddCategoryDialog } from "@/components/categories/add-category-dialog"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useCategories } from "@/hooks/useCategories"
+import { useTransactions } from "@/hooks/useTransactions"
+import { CategoryTransactionsSheet } from "@/components/categories/category-transactions-sheet"
+import { getCategoryIcon } from "@/lib/category-icons"
+import { formatCurrency, formatCurrencyNoDecimals } from "@/lib/formatCurrency"
+import type { Category } from "@/lib/firebase/firestore"
 
 interface CategoryListProps {
   selectedMonth: number
@@ -134,7 +140,10 @@ interface CategoryListProps {
 }
 export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: CategoryListProps) {
 //   const [categories, setCategories] = useState(initialCategories)
-  const { categories, loading, addCategory, updateCategory, deleteCategory } = useCategories()
+  const { categories, loading, addCategory, updateCategory, deleteCategory, setMonthlyBudgets, refreshCategories } =
+    useCategories()
+  const transactionsState = useTransactions()
+  const [viewingCategory, setViewingCategory] = useState<Category | null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<any>(null)
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false)
@@ -202,74 +211,42 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
     setBudgetDialogOpen(true)
   }
 
-  const handleSaveBudget = async() => {
+  const handleSaveBudget = async () => {
     if (!budgetCategory) return
 
     const amount = Number.parseFloat(budgetAmount) || 0
 
-    const success = await updateCategory(budgetCategory.id, {
-      
-      monthlyBudgets: {
-              
-              [monthKey]: amount,
-            },
-            monthlySpending: {
-              ...budgetCategory.monthlySpending,
-            },
-    })
-    if (success) {
-      setIsAddDialogOpen(false)
-      setEditingCategory(null)
+    // Only this month's budget is written, so other months' budgets are kept
+    const succeeded = await setMonthlyBudgets(monthKey, [{ categoryId: budgetCategory.id, amount }])
+
+    if (succeeded > 0) {
+      toast({
+        title: "Budget updated",
+        description: `${budgetCategory.name} budget set to ${formatCurrency(amount)} for ${monthNames[selectedMonth]} ${selectedYear}`,
+      })
     }
-
-    
-
-    toast({
-      title: "Budget updated",
-      description: `${budgetCategory.name} budget set to $${amount.toFixed(2)} for ${monthNames[selectedMonth]} ${selectedYear}`,
-    })
     setBudgetDialogOpen(false)
     setBudgetCategory(null)
     setBudgetAmount("")
   }
 
-  const handleCopyFromPreviousMonth = async() => {
+  const handleCopyFromPreviousMonth = async () => {
     const prevMonth = selectedMonth === 0 ? 11 : selectedMonth - 1
     const prevYear = selectedMonth === 0 ? selectedYear - 1 : selectedYear
     const prevMonthKey = `${prevYear}-${String(prevMonth + 1).padStart(2, "0")}`
 
-    let copiedCount = 0
+    const budgetsToCopy = categories
+      .filter((cat) => cat.id && (cat.monthlyBudgets?.[prevMonthKey] || 0) > 0)
+      .map((cat) => ({ categoryId: cat.id!, amount: cat.monthlyBudgets![prevMonthKey] }))
 
-    
-
-      categories.forEach(async(cat) => {
-        
-        const prevBudget = cat.monthlyBudgets?.[prevMonthKey]
-        if (prevBudget && prevBudget > 0) {
-          copiedCount++
-          const success = await updateCategory(cat?.id, {
-      
-      monthlyBudgets: {
-              
-              [monthKey]: prevBudget,
-            },
-            monthlySpending: {
-              ...cat.monthlySpending,
-            },
-    }
-
-)
-        }
-        
-      })
-    
+    const copiedCount = budgetsToCopy.length > 0 ? await setMonthlyBudgets(monthKey, budgetsToCopy) : 0
 
     if (copiedCount > 0) {
       toast({
         title: "Budgets copied",
         description: `Copied ${copiedCount} budget(s) from ${monthNames[prevMonth]} ${prevYear}`,
       })
-    } else {
+    } else if (budgetsToCopy.length === 0) {
       toast({
         title: "No budgets to copy",
         description: `No budgets found in ${monthNames[prevMonth]} ${prevYear}`,
@@ -313,11 +290,22 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
           const budgetStatus = getBudgetStatus(spent, budget)
           const isOverBudget = budget > 0 && spent > budget
           const hasBudget = budget > 0
+          const CategoryIcon = getCategoryIcon(category.icon)
 
           return (
             <Card
               key={category.id}
-              className="overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.02] border-border/50"
+              role="button"
+              tabIndex={0}
+              aria-label={`View ${category.name} transactions`}
+              onClick={() => setViewingCategory(category)}
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault()
+                  setViewingCategory(category)
+                }
+              }}
+              className="overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.02] border-border/50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <div className="h-1" style={{ backgroundColor: category.color }} />
 
@@ -325,7 +313,7 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
                     <div className="p-2.5 rounded-xl shadow-sm" style={{ backgroundColor: `${category.color}20` }}>
-                      <category.icon className="h-5 w-5" style={{ color: category.color }} />
+                      <CategoryIcon className="h-5 w-5" style={{ color: category.color }} />
                     </div>
                     <div>
                       <CardTitle className="text-base font-semibold">{category.name}</CardTitle>
@@ -337,7 +325,9 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                       </div>
                     </div>
                   </div>
-                  <DropdownMenu>
+                  {/* Menu clicks bubble through the portal to the card, so stop them here */}
+                  <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-8 w-8">
                         <MoreHorizontal className="h-4 w-4" />
@@ -345,6 +335,10 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setViewingCategory(category)}>
+                        <List className="mr-2 h-4 w-4" />
+                        View Transactions
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleSetBudget(category)}>
                         <DollarSign className="mr-2 h-4 w-4" />
                         Set Budget for {monthNames[selectedMonth]}
@@ -361,7 +355,8 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                         Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                    </DropdownMenu>
+                  </div>
                 </div>
               </CardHeader>
 
@@ -374,14 +369,17 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                     <p className="text-sm font-medium text-muted-foreground">No budget set</p>
                     <p className="text-xs text-muted-foreground/70 mt-1">
                       {transactions > 0
-                        ? `${transactions} transaction(s), $${spent.toFixed(2)} spent`
+                        ? `${transactions} transaction(s), ${formatCurrency(spent)} spent`
                         : "No transactions this month"}
                     </p>
                     <Button
                       variant="outline"
                       size="sm"
                       className="mt-3 gap-2 bg-transparent"
-                      onClick={() => handleSetBudget(category)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleSetBudget(category)
+                      }}
                     >
                       <DollarSign className="h-3.5 w-3.5" />
                       Set {monthNames[selectedMonth]} Budget
@@ -391,7 +389,7 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                   <div className="flex flex-col items-center justify-center py-4 text-center">
                     <FolderOpen className="h-8 w-8 text-muted-foreground/50 mb-2" />
                     <p className="text-sm text-muted-foreground">No transactions this month</p>
-                    <p className="text-xs text-muted-foreground/70 mt-1">Budget: ${budget.toFixed(2)}</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">Budget: {formatCurrency(budget)}</p>
                   </div>
                 ) : (
                   <>
@@ -407,18 +405,19 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                         </span>
                       </div>
                       <span className={cn("text-lg font-bold", budgetStatus.color)}>
-                        {isOverBudget ? "-" : ""}${Math.abs(remaining).toFixed(2)}
+                        {isOverBudget ? "-" : ""}
+                        {formatCurrency(Math.abs(remaining))}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-muted/50 rounded-lg p-2.5 text-center">
                         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Budget</p>
-                        <p className="text-sm font-semibold mt-0.5">${budget.toFixed(2)}</p>
+                        <p className="text-sm font-semibold mt-0.5">{formatCurrency(budget)}</p>
                       </div>
                       <div className="bg-muted/50 rounded-lg p-2.5 text-center">
                         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Spent</p>
-                        <p className="text-sm font-semibold mt-0.5">${spent.toFixed(2)}</p>
+                        <p className="text-sm font-semibold mt-0.5">{formatCurrency(spent)}</p>
                       </div>
                     </div>
 
@@ -433,7 +432,7 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
                       <div className="flex justify-between items-center text-xs">
                         <span className={cn("font-medium", budgetStatus.color)}>{Math.round(percentage)}% used</span>
                         <span className="text-muted-foreground">
-                          ${spent.toFixed(0)} / ${budget.toFixed(0)}
+                          {formatCurrencyNoDecimals(spent)} / {formatCurrencyNoDecimals(budget)}
                         </span>
                       </div>
                     </div>
@@ -461,7 +460,7 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
               Budget Amount
             </Label>
             <div className="relative mt-2">
-              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₦</span>
               <Input
                 id="budget-amount"
                 type="number"
@@ -509,6 +508,15 @@ export function CategoryList({ triggerAdd, selectedMonth, selectedYear }: Catego
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CategoryTransactionsSheet
+        category={viewingCategory}
+        onOpenChange={(open) => !open && setViewingCategory(null)}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        transactionsState={transactionsState}
+        onTransactionsChanged={refreshCategories}
+      />
 
       <AddCategoryDialog
         open={isAddDialogOpen}

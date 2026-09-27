@@ -80,7 +80,7 @@ export default function HomePage() {
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/signup">
+              <Link href="/auth/signup">
                 <Button size="lg" className="w-full sm:w-auto text-base px-8 py-6 bg-primary hover:bg-primary/90">
                   Start Tracking Free
                   <ArrowRight className="ml-2 h-5 w-5" />
@@ -372,7 +372,7 @@ export default function HomePage() {
                 Join thousands of users who have transformed their financial habits with FinMaester. Start your journey
                 today.
               </p>
-              <Link href="/signup">
+              <Link href="/auth/signup">
                 <Button size="lg" className="text-base px-8 py-6 bg-primary hover:bg-primary/90">
                   Get Started Free
                   <ArrowRight className="ml-2 h-5 w-5" />

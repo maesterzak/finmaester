@@ -2,7 +2,7 @@
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { TransactionList } from "@/components/transactions/transaction-list"
 import { AddTransactionButton } from "@/components/transactions/add-transaction-button"
-import { useState } from "react"
+import { Suspense, useState } from "react"
 
 export default function TransactionsPage() {
   const [triggerAdd, setTriggerAdd] = useState(0)
@@ -13,7 +13,10 @@ export default function TransactionsPage() {
         description="Manage your income and expenses"
         action={<AddTransactionButton onClick={() => setTriggerAdd(prev => prev + 1)} />}
       />
-      <TransactionList triggerAdd={triggerAdd} />
+      {/* TransactionList reads its filters from the URL (useSearchParams), which needs a Suspense boundary */}
+      <Suspense>
+        <TransactionList triggerAdd={triggerAdd} />
+      </Suspense>
     </div>
   )
 }

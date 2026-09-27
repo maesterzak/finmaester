@@ -14,6 +14,7 @@ import {
   QueryConstraint,
   writeBatch,
   setDoc,
+  FieldPath,
 } from "firebase/firestore"
 import { db } from "./config"
 import { tr } from "date-fns/locale"
@@ -34,6 +35,9 @@ export interface Transaction {
   assetType?: "stock" | "mutual_fund" | "crypto" | "fixed_income" | "other"
   units?: number
   unitPrice?: number
+  // Investment card (and crypto token) this contribution belongs to
+  investmentAccountId?: string
+  investmentTokenId?: string
 }
 
 export interface Category {
@@ -213,6 +217,8 @@ export const getCategories = async (userId: string) => {
     } = {}
 
     transactions.data.forEach((tx) => {
+      // Only expenses count toward a category's spending
+      if (tx.type !== "expense") return
       const catId = tx.categoryId || ""
       const yearMonth = tx.date.slice(0, 7) // "2025-11-28" → "2025-11"
 
@@ -287,6 +293,17 @@ export const updateCategory = async (categoryId: string, updates: Partial<Catego
       ...updates,
       updatedAt: Timestamp.now(),
     })
+    return { success: true, error: null }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+// Sets one month's budget without touching the budgets stored for other months
+export const setCategoryMonthlyBudget = async (categoryId: string, monthKey: string, amount: number) => {
+  try {
+    const categoryRef = doc(db, "categories", categoryId)
+    await updateDoc(categoryRef, new FieldPath("monthlyBudgets", monthKey), amount, "updatedAt", Timestamp.now())
     return { success: true, error: null }
   } catch (error: any) {
     return { success: false, error: error.message }

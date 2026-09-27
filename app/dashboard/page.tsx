@@ -4,17 +4,22 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { FinanceSummary } from "@/components/dashboard/finance-summary"
 import { ExpenseCharts } from "@/components/dashboard/expense-charts"
 import { RecentTransactions } from "@/components/dashboard/recent-transactions"
-import { ChatbotWidget } from "@/components/dashboard/chatbot-widget"
+import { AiAdvisor } from "@/components/dashboard/ai-advisor"
 import { BudgetAlerts } from "@/components/dashboard/budget-alerts"
 import { IncomeVsExpense } from "@/components/dashboard/income-vs-expense"
 import { RecurringExpenses } from "@/components/dashboard/recurring-expenses"
 import { useCategories } from "@/hooks/useCategories"
 import { useTransactions } from "@/hooks/useTransactions"
 import { useMemo } from "react"
+import { TargetWidget } from "@/components/investments/target-card"
+import { useInvestments } from "@/hooks/useInvestments"
+import { targetProgress } from "@/lib/investments"
 
 export default function DashboardPage() {
   const { categories, loading: categoriesLoading } = useCategories()
   const { transactions } = useTransactions()
+  const { targets, loading: investmentsLoading } = useInvestments()
+  const investmentProgress = useMemo(() => targetProgress(transactions, targets), [transactions, targets])
 
   // Calculate spent amounts for each category
   const categoriesWithSpent = useMemo(() => {
@@ -68,7 +73,10 @@ export default function DashboardPage() {
 
           {/* Right column - sidebar widget */}
           <div className="animate-slide-in" style={{ animationDelay: "0.4s" }}>
-            <ChatbotWidget />
+            <div className="space-y-6">
+              {!investmentsLoading && <TargetWidget progress={investmentProgress} />}
+              <AiAdvisor />
+            </div>
           </div>
         </div>
       </div>

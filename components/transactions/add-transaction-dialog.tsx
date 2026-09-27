@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { BookOpen, Briefcase, Car, Coffee, Heart, Home, Landmark, ShoppingBag, Wallet, Coins, TrendingUp } from "lucide-react"
+import { Landmark, ShoppingBag, Coins, TrendingUp } from "lucide-react"
 import { format } from "date-fns"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -23,10 +23,11 @@ import { cn } from "@/lib/utils"
 import { useCategories } from "@/hooks/useCategories"
 import { useProfiles } from "@/hooks/useProfile"
 import { getCurrencySymbol } from "@/lib/currency"
-
-const iconMap: Record<string, any> = {
-  Briefcase, Wallet, Car, BookOpen, Heart, ShoppingBag, Landmark, Coffee, Home
-}
+import { fromDateKey, toDateKey } from "@/lib/periods"
+import { getCategoryIcon } from "@/lib/category-icons"
+import Link from "next/link"
+import { useInvestments } from "@/hooks/useInvestments"
+import { legacyAssetType } from "@/lib/investments"
 
 interface AddTransactionDialogProps {
   open: boolean
@@ -34,6 +35,12 @@ interface AddTransactionDialogProps {
   onAdd: (transaction: any) => void
   onUpdate?: (transaction: any) => void
   transaction?: any
+  // Prefills a new transaction, e.g. "Invest" on an investment card
+  defaults?: {
+    type?: "income" | "expense" | "investment"
+    investmentAccountId?: string
+    investmentTokenId?: string
+  }
 }
 
 // Zod Schema for validation
@@ -48,8 +55,16 @@ const transactionSchema = z.object({
   unitPrice: z.number().optional(),
 })
 
-export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, transaction }: AddTransactionDialogProps) {
+export function AddTransactionDialog({
+  open,
+  onOpenChange,
+  onAdd,
+  onUpdate,
+  transaction,
+  defaults,
+}: AddTransactionDialogProps) {
   const { categories } = useCategories()
+  const { accounts: investmentAccounts, refresh: refreshInvestments } = useInvestments()
   const { loadProfile } = useProfiles()
   const [currencySymbol, setCurrencySymbol] = useState("₦")
 
@@ -64,6 +79,8 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
   const [assetType, setAssetType] = useState<"stock" | "mutual_fund" | "crypto" | "fixed_income" | "other">("stock")
   const [units, setUnits] = useState("")
   const [unitPrice, setUnitPrice] = useState("")
+  const [investmentAccountId, setInvestmentAccountId] = useState("")
+  const [investmentTokenId, setInvestmentTokenId] = useState("")
 
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -89,13 +106,16 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
       setAmount(transaction.amount.toString())
       setDescription(transaction.description)
       setCategoryId(transaction.categoryId || "")
-      setDate(new Date(transaction.date))
+      // Parse "yyyy-MM-dd" as a local date; new Date() would read it as UTC
+      setDate(transaction.date ? fromDateKey(transaction.date) : new Date())
       setAssetName(transaction.assetName || "")
       setAssetType(transaction.assetType || "stock")
       setUnits(transaction.units?.toString() || "")
       setUnitPrice(transaction.unitPrice?.toString() || "")
+      setInvestmentAccountId(transaction.investmentAccountId || "")
+      setInvestmentTokenId(transaction.investmentTokenId || "")
     } else {
-      setType("expense")
+      setType(defaults?.type || "expense")
       setAmount("")
       setDescription("")
       setCategoryId("")
@@ -104,8 +124,19 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
       setAssetType("stock")
       setUnits("")
       setUnitPrice("")
+      setInvestmentAccountId(defaults?.investmentAccountId || "")
+      setInvestmentTokenId(defaults?.investmentTokenId || "")
     }
+    // Pick up cards created since this dialog was mounted
+    if (open) refreshInvestments()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, transaction])
+
+  const selectedAccount = investmentAccounts.find((a) => a.id === investmentAccountId)
+  const accountTokens = Object.values(selectedAccount?.tokens || {}).sort((a, b) =>
+    a.createdAt.localeCompare(b.createdAt),
+  )
+  const isCrypto = selectedAccount?.type === "crypto"
 
   // Auto-calculate amount when units and unit price change
   useEffect(() => {
@@ -126,13 +157,21 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
     const numUnitPrice = unitPrice ? parseFloat(unitPrice) : undefined
 
     // Validate using Zod
+    const selectedToken = accountTokens.find((t) => t.id === investmentTokenId)
+    const derivedAssetName = selectedAccount
+      ? selectedToken
+        ? `${selectedAccount.name} · ${selectedToken.symbol}`
+        : selectedAccount.name
+      : assetName
+    const derivedAssetType = selectedAccount ? legacyAssetType(selectedAccount.type) : assetType
+
     const payload = {
       type,
       amount: numAmount,
       description,
       categoryId: type === "investment" ? undefined : categoryId,
-      assetName: type === "investment" ? assetName : undefined,
-      assetType: type === "investment" ? assetType : undefined,
+      assetName: type === "investment" ? derivedAssetName : undefined,
+      assetType: type === "investment" ? derivedAssetType : undefined,
       units: type === "investment" ? numUnits : undefined,
       unitPrice: type === "investment" ? numUnitPrice : undefined,
     }
@@ -153,8 +192,11 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
     if (type === "expense" && !categoryId) {
       newErrors.categoryId = "Category is required for expenses"
     }
-    if (type === "investment" && !assetName.trim()) {
-      newErrors.assetName = "Asset Name is required for investments"
+    if (type === "investment" && !selectedAccount) {
+      newErrors.investmentAccountId = "Choose which investment this goes into"
+    }
+    if (type === "investment" && isCrypto && accountTokens.length > 0 && !investmentTokenId) {
+      newErrors.investmentTokenId = "Choose which token you bought"
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -171,13 +213,16 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
       categoryId: type === "investment" ? "investment-cat" : categoryId,
       icon: type === "investment" ? "Coins" : (selectedCategory?.icon || "ShoppingBag"),
       amount: numAmount,
-      date: date.toISOString().split("T")[0],
+      // Local calendar date; toISOString() converts to UTC and can shift it to the previous day
+      date: toDateKey(date),
       description,
       ...(type === "investment" ? {
-        assetName,
-        assetType,
+        assetName: derivedAssetName,
+        assetType: derivedAssetType,
         units: numUnits,
         unitPrice: numUnitPrice,
+        investmentAccountId: selectedAccount?.id,
+        investmentTokenId: isCrypto && selectedToken ? selectedToken.id : undefined,
       } : {}),
     }
 
@@ -191,7 +236,7 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md w-full p-6 bg-[#110E0D] border-border text-foreground rounded-lg">
+      <DialogContent className="max-w-md w-[calc(100%-2rem)] max-h-[90dvh] overflow-y-auto p-4 sm:p-6 bg-[#110E0D] border-border text-foreground rounded-lg">
         <DialogHeader>
           <DialogTitle>{transaction ? "Edit Transaction" : "Add New Transaction"}</DialogTitle>
           <DialogDescription>
@@ -203,7 +248,7 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
           {/* Transaction Type */}
           <div className="grid gap-2">
             <Label className="text-sm font-semibold">Transaction Type</Label>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
               <label className="flex items-center gap-2 text-green-600 dark:text-green-400 cursor-pointer">
                 <input
                   type="radio"
@@ -237,53 +282,109 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
             </div>
           </div>
 
-          {/* Conditional Asset Fields for Investments */}
+          {/* Investment card (and token for crypto) */}
           {type === "investment" && (
             <>
-              <div className="grid gap-2">
-                <Label htmlFor="assetName">Asset Name</Label>
-                <Input
-                  id="assetName"
-                  value={assetName}
-                  onChange={(e) => setAssetName(e.target.value)}
-                  placeholder="e.g. WEMABANK, Bitcoin"
-                  className={cn(errors.assetName && "border-destructive")}
-                />
-                {errors.assetName && <span className="text-xs text-destructive">{errors.assetName}</span>}
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="assetType">Asset Type</Label>
-                <Select value={assetType} onValueChange={(val: any) => setAssetType(val)}>
-                  <SelectTrigger id="assetType">
-                    <SelectValue placeholder="Select Asset Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="stock">Stock</SelectItem>
-                    <SelectItem value="mutual_fund">Mutual Fund</SelectItem>
-                    <SelectItem value="crypto">Crypto</SelectItem>
-                    <SelectItem value="fixed_income">Fixed Income</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+              {investmentAccounts.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                  You don&apos;t have any investment cards yet.{" "}
+                  <Link href="/dashboard/investments" className="font-medium text-primary hover:underline">
+                    Create one on the Investments page
+                  </Link>{" "}
+                  first, e.g. &ldquo;Cowrywise MM Fund&rdquo; or &ldquo;Crypto&rdquo;.
+                  {errors.investmentAccountId && (
+                    <span className="block mt-1 text-xs text-destructive">{errors.investmentAccountId}</span>
+                  )}
+                </div>
+              ) : (
                 <div className="grid gap-2">
-                  <Label htmlFor="units">Units (Optional)</Label>
+                  <Label htmlFor="investmentAccountId">Invest into</Label>
+                  <Select
+                    value={investmentAccountId}
+                    onValueChange={(v) => {
+                      setInvestmentAccountId(v)
+                      setInvestmentTokenId("")
+                    }}
+                  >
+                    <SelectTrigger
+                      id="investmentAccountId"
+                      className={cn(errors.investmentAccountId && "border-destructive")}
+                    >
+                      <SelectValue placeholder="Select an investment card" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {investmentAccounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: account.color }} />
+                            {account.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.investmentAccountId && (
+                    <span className="text-xs text-destructive">{errors.investmentAccountId}</span>
+                  )}
+                  {transaction?.assetName && !transaction?.investmentAccountId && (
+                    <span className="text-xs text-muted-foreground">
+                      Previously recorded as &ldquo;{transaction.assetName}&rdquo;
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {isCrypto && (
+                <div className="grid gap-2">
+                  <Label htmlFor="investmentTokenId">Token</Label>
+                  {accountTokens.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No tokens on this card yet. Add tokens (e.g. BTC, ETH) from its card on the Investments page.
+                    </p>
+                  ) : (
+                    <Select value={investmentTokenId} onValueChange={setInvestmentTokenId}>
+                      <SelectTrigger
+                        id="investmentTokenId"
+                        className={cn(errors.investmentTokenId && "border-destructive")}
+                      >
+                        <SelectValue placeholder="Select a token" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accountTokens.map((token) => (
+                          <SelectItem key={token.id} value={token.id}>
+                            {token.symbol}
+                            {token.name ? ` · ${token.name}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {errors.investmentTokenId && (
+                    <span className="text-xs text-destructive">{errors.investmentTokenId}</span>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="units">{isCrypto ? "Quantity (optional)" : "Units (optional)"}</Label>
                   <Input
                     id="units"
                     type="number"
+                    step="any"
+                    inputMode="decimal"
                     value={units}
                     onChange={(e) => setUnits(e.target.value)}
-                    placeholder="e.g. 100"
+                    placeholder={isCrypto ? "e.g. 0.0021" : "e.g. 100"}
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="unitPrice">Unit Price (Optional)</Label>
+                  <Label htmlFor="unitPrice">{isCrypto ? "Price per token" : "Unit price"} (optional)</Label>
                   <Input
                     id="unitPrice"
                     type="number"
+                    step="any"
+                    inputMode="decimal"
                     value={unitPrice}
                     onChange={(e) => setUnitPrice(e.target.value)}
                     placeholder="e.g. 2.50"
@@ -341,7 +442,7 @@ export function AddTransactionDialog({ open, onOpenChange, onAdd, onUpdate, tran
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((cat) => {
-                    const Icon = iconMap[cat.icon] || ShoppingBag
+                    const Icon = getCategoryIcon(cat.icon)
                     return (
                       <SelectItem key={cat.id} value={cat.id!}>
                         <div className="flex items-center gap-2">
