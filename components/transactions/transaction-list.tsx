@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AddTransactionDialog } from "@/components/transactions/add-transaction-dialog"
 import { PeriodFilter } from "@/components/transactions/period-filter"
+import { BudgetOverview } from "@/components/categories/budget-overview"
 import { TransactionActions } from "@/components/transactions/transaction-actions"
 import { TransactionAmount } from "@/components/transactions/transaction-amount"
 import { toTransactionFields } from "@/components/transactions/transaction-fields"
@@ -32,7 +33,7 @@ import {
 } from "@/lib/analytics"
 import { getCategoryIcon } from "@/lib/category-icons"
 import { formatCurrency } from "@/lib/formatCurrency"
-import { fromDateKey, previousPeriodLabel } from "@/lib/periods"
+import { fromDateKey, monthKeyOf, previousPeriodLabel } from "@/lib/periods"
 import { cn } from "@/lib/utils"
 
 interface TransactionListProps {
@@ -45,9 +46,17 @@ const INVESTMENT_CATEGORY_ID = "investment-cat"
 
 export function TransactionList({ triggerAdd }: TransactionListProps) {
   const { transactions, loading, addTransaction, updateTransaction, deleteTransaction } = useTransactions()
-  const { categories } = useCategories()
+  const { categories, loading: categoriesLoading } = useCategories()
   const filter = usePeriodFilter()
-  const { period, range, previousRange, label, categoryId, setCategoryId } = filter
+  const { period, range, previousRange, label, categoryId, setCategoryId, anchor, includesToday } = filter
+
+  // Budgets are monthly: use the month being viewed, or this month / the range's last month for longer periods
+  const budgetMonthKey =
+    period === "year" || period === "custom"
+      ? includesToday
+        ? monthKeyOf(new Date())
+        : range.end.slice(0, 7)
+      : monthKeyOf(anchor)
 
   const [searchQuery, setSearchQuery] = useState("")
   const [searchScope, setSearchScope] = useState<SearchScope>("period")
@@ -152,6 +161,10 @@ export function TransactionList({ triggerAdd }: TransactionListProps) {
           <PeriodSummary current={current} previous={previous} previousLabel={previousPeriodLabel[period]} />
         )}
       </PeriodFilter>
+
+      {!loading && !categoriesLoading && (
+        <BudgetOverview categories={categories} transactions={transactions} monthKey={budgetMonthKey} />
+      )}
 
       {!loading && (
         <SpendingChart

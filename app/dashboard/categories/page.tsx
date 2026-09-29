@@ -5,6 +5,9 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { CategoryList } from "@/components/categories/category-list"
 import { AddCategoryButton } from "@/components/categories/add-category-button"
 import { CalendarDays } from "lucide-react"
+import { BudgetOverview } from "@/components/categories/budget-overview"
+import { useCategories } from "@/hooks/useCategories"
+import { useTransactions } from "@/hooks/useTransactions"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 const months = [
@@ -31,6 +34,9 @@ export default function CategoriesPage() {
   const currentMonth = new Date().getMonth()
   const [selectedMonth, setSelectedMonth] = useState(currentMonth)
   const [selectedYear, setSelectedYear] = useState(currentYear)
+  const { categories, loading: categoriesLoading } = useCategories()
+  const { transactions } = useTransactions()
+  const monthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}`
 
   return (
     <div className="container mx-auto p-4 md:p-6">
@@ -80,6 +86,16 @@ export default function CategoriesPage() {
           </span>
         </div>
       </div>
+      {!categoriesLoading && (
+        <div className="mb-6">
+          <BudgetOverview
+            categories={categories}
+            transactions={transactions}
+            monthKey={monthKey}
+            showManageLink={false}
+          />
+        </div>
+      )}
       <CategoryList triggerAdd={triggerAdd} selectedMonth={selectedMonth} selectedYear={selectedYear} />
     </div>
   )
