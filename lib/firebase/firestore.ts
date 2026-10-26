@@ -38,6 +38,9 @@ export interface Transaction {
   // Investment card (and crypto token) this contribution belongs to
   investmentAccountId?: string
   investmentTokenId?: string
+  // Crypto buys are entered in USDT; amount holds the converted value at usdtRate
+  usdtAmount?: number
+  usdtRate?: number
 }
 
 export interface Category {

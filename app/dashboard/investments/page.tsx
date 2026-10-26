@@ -25,6 +25,7 @@ import {
 import { ContributionsSheet, UnassignedInvestments } from "@/components/investments/contributions-sheet"
 import { useTransactions } from "@/hooks/useTransactions"
 import { useInvestments } from "@/hooks/useInvestments"
+import { useUsdtRate } from "@/hooks/useUsdtRate"
 import type { Transaction } from "@/lib/firebase/firestore"
 import type { InvestmentAccount } from "@/lib/firebase/investments"
 import { monthlyContributions, summarizePortfolio, targetProgress } from "@/lib/investments"
@@ -48,7 +49,11 @@ export default function InvestmentsPage() {
   } = useInvestments()
   const loading = transactionsLoading || investmentsLoading
 
-  const portfolio = useMemo(() => summarizePortfolio(accounts, transactions), [accounts, transactions])
+  const { rate: usdtRate } = useUsdtRate()
+  const portfolio = useMemo(
+    () => summarizePortfolio(accounts, transactions, new Date(), usdtRate),
+    [accounts, transactions, usdtRate],
+  )
   const months = useMemo(() => monthlyContributions(transactions, targets, 12), [transactions, targets])
   const progress = useMemo(() => targetProgress(transactions, targets), [transactions, targets])
 
@@ -223,10 +228,12 @@ export default function InvestmentsPage() {
         onOpenChange={(open) => !open && setValueAccountId(null)}
         account={valueSummary?.account ?? null}
         invested={valueSummary?.invested ?? 0}
-        onSave={async (value) => {
+        usdtRate={usdtRate}
+        onSave={async (value, valueUsdt) => {
           if (!valueSummary) return
           const ok = await updateAccount(valueSummary.account.id, {
             currentValue: value,
+            currentValueUsdt: valueUsdt ?? null,
             currentValueDate: value === null ? null : toDateKey(new Date()),
           })
           if (ok) setValueAccountId(null)

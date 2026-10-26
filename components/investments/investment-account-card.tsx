@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { type AccountSummary, formatInvestmentDate, investmentTypeLabel } from "@/lib/investments"
 import { formatCurrency } from "@/lib/formatCurrency"
+import { formatUsdt } from "@/lib/usdt"
 import { cn } from "@/lib/utils"
 
 const formatUnits = (units: number) =>
@@ -100,6 +101,9 @@ export function InvestmentAccountCard({
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Total invested</p>
             <p className="text-2xl font-bold truncate">{formatCurrency(invested)}</p>
+            {isCrypto && summary.usdtInvested > 0 && (
+              <p className="text-xs text-muted-foreground truncate">{formatUsdt(summary.usdtInvested)} bought</p>
+            )}
           </div>
           <p className="text-xs text-muted-foreground pb-1">{share.toFixed(0)}% of portfolio</p>
         </div>
@@ -108,6 +112,7 @@ export function InvestmentAccountCard({
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 p-2.5 text-sm">
             <span className="text-muted-foreground">
               Worth <span className="font-semibold text-foreground">{formatCurrency(currentValue)}</span>
+              {summary.currentValueUsdt !== null && ` (${formatUsdt(summary.currentValueUsdt)})`}
             </span>
             {gain !== null && (
               <span className={cn("font-semibold", gain >= 0 ? "text-emerald-500" : "text-red-500")}>
@@ -118,7 +123,9 @@ export function InvestmentAccountCard({
             )}
             {account.currentValueDate && (
               <span className="w-full text-xs text-muted-foreground">
-                Value as of {formatInvestmentDate(account.currentValueDate)}
+                {summary.currentValueUsdt !== null
+                  ? `USDT balance as of ${formatInvestmentDate(account.currentValueDate)}, at today's rate`
+                  : `Value as of ${formatInvestmentDate(account.currentValueDate)}`}
               </span>
             )}
           </div>
@@ -161,10 +168,16 @@ export function InvestmentAccountCard({
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
                         {token.units > 0 ? `${formatUnits(token.units)} ${token.symbol}` : `${token.count} buy${token.count !== 1 ? "s" : ""}`}
-                        {token.averagePrice !== null && ` · avg ${formatCurrency(token.averagePrice)}`}
+                        {token.averagePrice !== null &&
+                          ` · avg ${token.averagePriceInUsdt ? formatUsdt(token.averagePrice) : formatCurrency(token.averagePrice)}`}
                       </p>
                     </div>
-                    <span className="text-sm font-semibold whitespace-nowrap">{formatCurrency(token.invested)}</span>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold whitespace-nowrap">{formatCurrency(token.invested)}</p>
+                      {token.usdtInvested > 0 && (
+                        <p className="text-xs text-muted-foreground whitespace-nowrap">{formatUsdt(token.usdtInvested)}</p>
+                      )}
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"

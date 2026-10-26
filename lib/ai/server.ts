@@ -2,7 +2,9 @@
 // it reads GEMINI_API_KEY, which must stay on the server.
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
-const DEFAULT_MODEL = "gemini-3.8-flash"
+const DEFAULT_MODEL = "gemini-3.5-flash"
+// Stay under the routes' 60s maxDuration so the user gets a clear message instead of a dropped request
+const GEMINI_TIMEOUT_MS = 50_000
 
 export class AiError extends Error {
   constructor(
@@ -83,6 +85,7 @@ export async function callGemini({ system, contents, responseSchema, temperature
 
   const res = await fetch(`${GEMINI_ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
+    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
@@ -93,6 +96,12 @@ export async function callGemini({ system, contents, responseSchema, temperature
         ...(responseSchema ? { responseMimeType: "application/json", responseSchema } : {}),
       },
     }),
+  }).catch((error: Error) => {
+    console.error(`Gemini request failed (${model}): ${error.name} ${error.message}`)
+    if (error.name === "TimeoutError") {
+      throw new AiError("The AI took too long to respond. Please try again.", 504)
+    }
+    throw new AiError("Couldn't reach the AI service. Check your connection and try again.", 502)
   })
 
   if (!res.ok) {

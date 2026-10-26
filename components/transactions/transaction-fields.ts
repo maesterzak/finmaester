@@ -14,7 +14,7 @@ export function toTransactionFields(tx: any): TransactionFields {
     date: tx.date,
   }
   if (tx.type === "investment") {
-    for (const key of ["assetName", "assetType", "units", "unitPrice", "investmentAccountId", "investmentTokenId"] as const) {
+    for (const key of ["assetName", "assetType", "units", "unitPrice", "investmentAccountId", "investmentTokenId", "usdtAmount", "usdtRate"] as const) {
       if (tx[key] !== undefined && tx[key] !== "") (fields as any)[key] = tx[key]
     }
   }

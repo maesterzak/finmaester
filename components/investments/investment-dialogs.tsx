@@ -22,6 +22,7 @@ import { INVESTMENT_COLORS, INVESTMENT_TYPES } from "@/lib/investments"
 import { currencySymbol, formatCurrency, symbolInputPadding } from "@/lib/formatCurrency"
 import { monthKeyOf } from "@/lib/periods"
 import { cn } from "@/lib/utils"
+import { formatUsdt, usdtToLocal } from "@/lib/usdt"
 
 const dialogClass = "max-w-md w-[calc(100%-2rem)] max-h-[90dvh] overflow-y-auto p-4 sm:p-6"
 
@@ -304,27 +305,37 @@ export function CurrentValueDialog({
   onOpenChange,
   account,
   invested,
+  usdtRate,
   onSave,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   account: InvestmentAccount | null
   invested: number
-  onSave: (value: number | null) => Promise<unknown>
+  // Live price of 1 USDT; crypto cards are valued in USDT and converted with it
+  usdtRate?: number | null
+  onSave: (value: number | null, valueUsdt?: number | null) => Promise<unknown>
 }) {
   const [value, setValue] = useState("")
   const [saving, setSaving] = useState(false)
+  const inUsdt = account?.type === "crypto"
 
   useEffect(() => {
-    if (open) setValue(typeof account?.currentValue === "number" ? String(account.currentValue) : "")
-  }, [open, account])
+    if (!open) return
+    const stored = inUsdt ? account?.currentValueUsdt : account?.currentValue
+    setValue(typeof stored === "number" ? String(stored) : "")
+  }, [open, account, inUsdt])
 
-  const parsed = parseAmount(value)
+  const entered = parseAmount(value)
+  // Value in the user's currency, used for the gain/loss preview
+  const parsed = inUsdt ? (entered !== null && usdtRate ? usdtToLocal(entered, usdtRate) : null) : entered
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    await onSave(value.trim() === "" ? null : parsed)
+    if (value.trim() === "") await onSave(null, null)
+    else if (inUsdt) await onSave(parsed, entered)
+    else await onSave(parsed)
     setSaving(false)
   }
 
@@ -340,8 +351,30 @@ export function CurrentValueDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="current-value">Current value</Label>
-            <MoneyInput id="current-value" value={value} onChange={setValue} placeholder="e.g. 1250000" />
+            <Label htmlFor="current-value">Current value{inUsdt && " (USDT)"}</Label>
+            {inUsdt ? (
+              <>
+                <Input
+                  id="current-value"
+                  type="number"
+                  step="any"
+                  min="0"
+                  inputMode="decimal"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder="e.g. 850"
+                />
+                <span className="text-xs text-muted-foreground">
+                  {entered !== null && usdtRate
+                    ? `${formatUsdt(entered)} ≈ ${formatCurrency(parsed ?? 0)} at ${formatCurrency(usdtRate)} per USDT`
+                    : usdtRate
+                      ? `Converted at the live rate, ${formatCurrency(usdtRate)} per USDT`
+                      : "Live USDT rate unavailable right now"}
+                </span>
+              </>
+            ) : (
+              <MoneyInput id="current-value" value={value} onChange={setValue} placeholder="e.g. 1250000" />
+            )}
             {parsed !== null && invested > 0 && (
               <span className={cn("text-xs", parsed >= invested ? "text-emerald-500" : "text-red-500")}>
                 {parsed >= invested ? "Gain" : "Loss"} of {formatCurrency(Math.abs(parsed - invested))} (
@@ -354,7 +387,7 @@ export function CurrentValueDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving || (value.trim() !== "" && parsed === null)}>
+            <Button type="submit" disabled={saving || (value.trim() !== "" && (entered === null || (inUsdt && parsed === null)))}>
               Save value
             </Button>
           </DialogFooter>

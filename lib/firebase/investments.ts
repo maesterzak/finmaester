@@ -34,6 +34,8 @@ export interface InvestmentAccount {
   // Manually updated market value, for gain/loss
   currentValue?: number | null
   currentValueDate?: string | null
+  // Crypto cards: value in USDT, converted at the live rate (currentValue keeps the last conversion as a fallback)
+  currentValueUsdt?: number | null
   tokens?: Record<string, InvestmentToken>
   createdAt: string
   updatedAt: string

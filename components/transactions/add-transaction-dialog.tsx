@@ -23,10 +23,12 @@ import { cn } from "@/lib/utils"
 import { useCategories } from "@/hooks/useCategories"
 import { fromDateKey, toDateKey } from "@/lib/periods"
 import { getCategoryIcon } from "@/lib/category-icons"
-import { currencySymbol, symbolInputPadding } from "@/lib/formatCurrency"
+import { currencySymbol, formatCurrency, symbolInputPadding } from "@/lib/formatCurrency"
 import Link from "next/link"
 import { useInvestments } from "@/hooks/useInvestments"
 import { legacyAssetType } from "@/lib/investments"
+import { useUsdtRate } from "@/hooks/useUsdtRate"
+import { usdtToLocal } from "@/lib/usdt"
 
 interface AddTransactionDialogProps {
   open: boolean
@@ -80,6 +82,10 @@ export function AddTransactionDialog({
   const [unitPrice, setUnitPrice] = useState("")
   const [investmentAccountId, setInvestmentAccountId] = useState("")
   const [investmentTokenId, setInvestmentTokenId] = useState("")
+  // Crypto buys are entered in USDT and converted at usdtRate
+  const [usdtAmount, setUsdtAmount] = useState("")
+  const [usdtRate, setUsdtRate] = useState("")
+  const { rate: liveUsdtRate, loading: usdtRateLoading } = useUsdtRate()
 
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -99,6 +105,8 @@ export function AddTransactionDialog({
       setUnitPrice(transaction.unitPrice?.toString() || "")
       setInvestmentAccountId(transaction.investmentAccountId || "")
       setInvestmentTokenId(transaction.investmentTokenId || "")
+      setUsdtAmount(transaction.usdtAmount?.toString() || "")
+      setUsdtRate(transaction.usdtRate?.toString() || "")
     } else {
       setType(defaults?.type || "expense")
       setAmount("")
@@ -111,6 +119,8 @@ export function AddTransactionDialog({
       setUnitPrice("")
       setInvestmentAccountId(defaults?.investmentAccountId || "")
       setInvestmentTokenId(defaults?.investmentTokenId || "")
+      setUsdtAmount("")
+      setUsdtRate("")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, transaction])
@@ -121,21 +131,32 @@ export function AddTransactionDialog({
   )
   const isCrypto = selectedAccount?.type === "crypto"
 
-  // Auto-calculate amount when units and unit price change
+  // Prefill the conversion rate with the live USDT price; kept as-is when editing an existing buy
+  useEffect(() => {
+    if (open && isCrypto && !usdtRate && liveUsdtRate) setUsdtRate(String(liveUsdtRate))
+  }, [open, isCrypto, usdtRate, liveUsdtRate])
+
+  // Auto-calculate amount when units and unit price change (in USDT for crypto)
   useEffect(() => {
     if (type === "investment" && units && unitPrice) {
       const calculated = parseFloat(units) * parseFloat(unitPrice)
       if (!isNaN(calculated)) {
-        setAmount(calculated.toFixed(2))
+        if (isCrypto) setUsdtAmount(String(Math.round(calculated * 100) / 100))
+        else setAmount(calculated.toFixed(2))
       }
     }
-  }, [units, unitPrice, type])
+  }, [units, unitPrice, type, isCrypto])
+
+  const isCryptoBuy = type === "investment" && isCrypto
+  const numUsdtAmount = parseFloat(usdtAmount) || 0
+  const numUsdtRate = parseFloat(usdtRate) || 0
+  const convertedAmount = numUsdtAmount > 0 && numUsdtRate > 0 ? usdtToLocal(numUsdtAmount, numUsdtRate) : 0
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setErrors({})
 
-    const numAmount = parseFloat(amount) || 0
+    const numAmount = isCryptoBuy ? convertedAmount : parseFloat(amount) || 0
     const numUnits = units ? parseFloat(units) : undefined
     const numUnitPrice = unitPrice ? parseFloat(unitPrice) : undefined
 
@@ -178,6 +199,9 @@ export function AddTransactionDialog({
     if (type === "investment" && !selectedAccount) {
       newErrors.investmentAccountId = "Choose which investment this goes into"
     }
+    if (isCryptoBuy && numUsdtRate <= 0) {
+      newErrors.usdtRate = "Enter the USDT rate"
+    }
     if (type === "investment" && isCrypto && accountTokens.length > 0 && !investmentTokenId) {
       newErrors.investmentTokenId = "Choose which token you bought"
     }
@@ -206,6 +230,8 @@ export function AddTransactionDialog({
         unitPrice: numUnitPrice,
         investmentAccountId: selectedAccount?.id,
         investmentTokenId: isCrypto && selectedToken ? selectedToken.id : undefined,
+        usdtAmount: isCrypto ? numUsdtAmount : undefined,
+        usdtRate: isCrypto ? numUsdtRate : undefined,
       } : {}),
     }
 
@@ -362,7 +388,7 @@ export function AddTransactionDialog({
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="unitPrice">{isCrypto ? "Price per token" : "Unit price"} (optional)</Label>
+                  <Label htmlFor="unitPrice">{isCrypto ? "Price per token (USDT)" : "Unit price"} (optional)</Label>
                   <Input
                     id="unitPrice"
                     type="number"
@@ -377,7 +403,57 @@ export function AddTransactionDialog({
             </>
           )}
 
-          {/* Amount */}
+          {/* Amount: USDT for crypto, converted at the rate below */}
+          {isCryptoBuy ? (
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="usdtAmount">Amount (USDT)</Label>
+                <Input
+                  id="usdtAmount"
+                  type="number"
+                  step="any"
+                  min="0"
+                  inputMode="decimal"
+                  value={usdtAmount}
+                  onChange={(e) => setUsdtAmount(e.target.value)}
+                  placeholder="e.g. 50"
+                  className={cn(errors.amount && "border-destructive")}
+                />
+                {errors.amount && <span className="text-xs text-destructive">{errors.amount}</span>}
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="usdtRate">Rate ({currencySymbolText} per USDT)</Label>
+                <Input
+                  id="usdtRate"
+                  type="number"
+                  step="any"
+                  min="0"
+                  inputMode="decimal"
+                  value={usdtRate}
+                  onChange={(e) => setUsdtRate(e.target.value)}
+                  placeholder={usdtRateLoading ? "Loading…" : "e.g. 1500"}
+                  className={cn(errors.usdtRate && "border-destructive")}
+                />
+                {errors.usdtRate && <span className="text-xs text-destructive">{errors.usdtRate}</span>}
+              </div>
+              <p className="col-span-2 -mt-1 text-xs text-muted-foreground">
+                {convertedAmount > 0 ? (
+                  <>
+                    ≈ <span className="font-semibold text-foreground">{formatCurrency(convertedAmount)}</span> recorded
+                  </>
+                ) : liveUsdtRate ? (
+                  `Live rate: ${formatCurrency(liveUsdtRate)} per USDT`
+                ) : usdtRateLoading ? (
+                  "Fetching the live USDT rate…"
+                ) : (
+                  "Live rate unavailable. Enter the rate you bought at."
+                )}
+                {transaction && !transaction.usdtAmount && transaction.amount > 0 && (
+                  <span className="block">Previously recorded as {formatCurrency(transaction.amount)}</span>
+                )}
+              </p>
+            </div>
+          ) : (
           <div className="grid gap-2">
             <Label htmlFor="amount">Amount</Label>
             <div className="relative">
@@ -395,6 +471,7 @@ export function AddTransactionDialog({
             </div>
             {errors.amount && <span className="text-xs text-destructive">{errors.amount}</span>}
           </div>
+          )}
 
           {/* Date */}
           <div className="grid gap-2">

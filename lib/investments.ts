@@ -36,6 +36,7 @@ export const INVESTMENT_COLORS = [
 ]
 
 const amountOf = (t: Transaction) => Number(t.amount) || 0
+const usdtOf = (t: Transaction) => Number(t.usdtAmount) || 0
 const monthOf = (t: Transaction) => (t.date || "").slice(0, 7)
 const latestDate = (txs: Transaction[]) =>
   txs.reduce<string | null>((latest, t) => (t.date && (!latest || t.date > latest) ? t.date : latest), null)
@@ -50,15 +51,21 @@ export interface TokenSummary {
   symbol: string
   name?: string | null
   invested: number
+  // Crypto: USDT spent, and average price per token in USDT
+  usdtInvested: number
   units: number
   count: number
   averagePrice: number | null
+  averagePriceInUsdt: boolean
   lastDate: string | null
 }
 
 export interface AccountSummary {
   account: InvestmentAccount
   invested: number
+  // Crypto: total USDT across buys entered in USDT
+  usdtInvested: number
+  currentValueUsdt: number | null
   count: number
   thisMonth: number
   lastDate: string | null
@@ -86,10 +93,12 @@ export interface PortfolioSummary {
   unassignedTotal: number
 }
 
+// usdtRate (live price of 1 USDT in the user's currency) values crypto cards tracked in USDT
 export function summarizePortfolio(
   accounts: InvestmentAccount[],
   transactions: Transaction[],
   today: Date = new Date(),
+  usdtRate: number | null = null,
 ): PortfolioSummary {
   const investments = investmentTransactions(transactions)
   const monthKey = monthKeyOf(today)
@@ -113,23 +122,30 @@ export function summarizePortfolio(
   const summaries: AccountSummary[] = accounts.map((account) => {
     const txs = byAccount.get(account.id) ?? []
     const invested = txs.reduce((s, t) => s + amountOf(t), 0)
-    const hasValue = typeof account.currentValue === "number"
-    const gain = hasValue ? account.currentValue! - invested : null
+    const valueUsdt = account.type === "crypto" && typeof account.currentValueUsdt === "number" ? account.currentValueUsdt : null
+    const currentValue =
+      valueUsdt !== null && usdtRate ? valueUsdt * usdtRate : typeof account.currentValue === "number" ? account.currentValue : null
+    const gain = currentValue !== null ? currentValue - invested : null
 
     const tokens = Object.values(account.tokens || {})
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map((token) => {
         const tokenTxs = txs.filter((t) => t.investmentTokenId === token.id)
         const tokenInvested = tokenTxs.reduce((s, t) => s + amountOf(t), 0)
+        const tokenUsdt = tokenTxs.reduce((s, t) => s + usdtOf(t), 0)
         const units = tokenTxs.reduce((s, t) => s + (Number(t.units) || 0), 0)
+        // Average in USDT when every buy was entered in USDT, otherwise in the local currency
+        const allUsdt = tokenTxs.length > 0 && tokenTxs.every((t) => usdtOf(t) > 0)
         return {
           id: token.id,
           symbol: token.symbol,
           name: token.name,
           invested: tokenInvested,
+          usdtInvested: tokenUsdt,
           units,
           count: tokenTxs.length,
-          averagePrice: units > 0 ? tokenInvested / units : null,
+          averagePrice: units > 0 ? (allUsdt ? tokenUsdt : tokenInvested) / units : null,
+          averagePriceInUsdt: allUsdt,
           lastDate: latestDate(tokenTxs),
         }
       })
@@ -138,10 +154,12 @@ export function summarizePortfolio(
     return {
       account,
       invested,
+      usdtInvested: txs.reduce((s, t) => s + usdtOf(t), 0),
+      currentValueUsdt: valueUsdt,
       count: txs.length,
       thisMonth: txs.filter((t) => monthOf(t) === monthKey).reduce((s, t) => s + amountOf(t), 0),
       lastDate: latestDate(txs),
-      currentValue: hasValue ? account.currentValue! : null,
+      currentValue,
       gain,
       gainPct: gain !== null && invested > 0 ? (gain / invested) * 100 : null,
       share: totalInvested > 0 ? (invested / totalInvested) * 100 : 0,
